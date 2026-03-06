@@ -1,0 +1,10 @@
+messages:
+  - path: /light/color
+    description: set RGB color
+    args:
+      - name: r
+        type: int
+      - name: g
+        type: int
+      - name: b
+        type: int
