@@ -350,11 +350,3 @@ osc-platform/
   schema.kts
   schema.yaml
 ```
-
-## ロードマップ
-
-- `bool` / 追加OSC型サポート
-- Bundle運用機能の強化 (timetag戦略)
-- REST adapter
-- Web UI adapter
-- 統合テスト拡充 (MCP stdio `tools/call` / CLI `send` / codec境界ケース)
