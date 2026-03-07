@@ -2,6 +2,13 @@
 
 OSC (Open Sound Control) を扱うための、スキーマ駆動開発プラットフォームです。
 
+## Presentation
+
+OSC → schema の価値と本プロジェクトのアーキテクチャを解説するスライドを公開しています。
+
+- 🌐 **Web Slides**: [https://gutugutu3030.github.io/osc-platform/](https://gutugutu3030.github.io/osc-platform/)
+- 📄 **PDF**: [https://gutugutu3030.github.io/osc-platform/slides.pdf](https://gutugutu3030.github.io/osc-platform/slides.pdf)
+
 本プロジェクトは `Small Core + Adapter` を前提に設計されており、
 Core を最小に保ちながら CLI / MCP / 将来の REST / Web UI へ拡張しやすい構成を目指します。
 
