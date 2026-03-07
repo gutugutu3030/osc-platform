@@ -96,6 +96,33 @@ class OscRuntime(
         )
     }
 
+    suspend fun sendBundle(
+        messages: List<Pair<String, Map<String, Any?>>>,
+        target: OscTarget,
+        timeTag: Long = OscTimeTag.IMMEDIATE,
+    ) {
+        require(messages.isNotEmpty()) { "sendBundle requires at least one message" }
+
+        val elements = messages.map { (messageRef, rawArgs) ->
+            val spec = schema.resolveMessage(messageRef)
+                ?: throw IllegalArgumentException("Unknown message reference: $messageRef")
+
+            val specArgNames = spec.args.map { it.name }.toSet()
+            val unknownArgs = rawArgs.keys - specArgNames
+            require(unknownArgs.isEmpty()) {
+                "Unknown args for '${spec.name}': ${unknownArgs.joinToString()}"
+            }
+
+            val orderedArgs = flattenArgs(spec = spec, rawArgs = rawArgs)
+            OscMessagePacket(address = spec.path, arguments = orderedArgs)
+        }
+
+        transport.send(
+            packet = OscBundlePacket(timeTag = timeTag, elements = elements),
+            target = target,
+        )
+    }
+
     private suspend fun processPacket(packet: OscPacket) {
         when (packet) {
             is OscMessagePacket -> processMessage(packet)
@@ -392,6 +419,19 @@ class OscRuntime(
             }
 
             OscType.STRING -> raw.toString()
+
+            OscType.BOOL -> when (raw) {
+                is Boolean -> raw
+                is Int     -> raw != 0
+                is String  -> raw.lowercase() in listOf("true", "1", "yes")
+                else       -> throw IllegalArgumentException("Value '$raw' is not a valid BOOL")
+            }
+
+            OscType.BLOB -> when (raw) {
+                is ByteArray -> raw
+                is String    -> java.util.Base64.getDecoder().decode(raw)
+                else         -> throw IllegalArgumentException("Value '$raw' is not a valid BLOB")
+            }
         }
     }
 
@@ -400,6 +440,8 @@ class OscRuntime(
             OscType.INT -> value is Int
             OscType.FLOAT -> value is Float || value is Double
             OscType.STRING -> value is String
+            OscType.BOOL -> value is Boolean
+            OscType.BLOB -> value is ByteArray
         }
     }
 }

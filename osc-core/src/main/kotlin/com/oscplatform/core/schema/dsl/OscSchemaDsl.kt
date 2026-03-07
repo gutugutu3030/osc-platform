@@ -4,6 +4,7 @@ import com.oscplatform.core.schema.ArrayArgNode
 import com.oscplatform.core.schema.ArrayItemSpec
 import com.oscplatform.core.schema.LengthSpec
 import com.oscplatform.core.schema.OscArgNode
+import com.oscplatform.core.schema.OscBundleSpec
 import com.oscplatform.core.schema.OscMessageSpec
 import com.oscplatform.core.schema.OscNaming
 import com.oscplatform.core.schema.OscSchema
@@ -15,11 +16,14 @@ import com.oscplatform.core.schema.TupleFieldSpec
 val INT: OscType = OscType.INT
 val FLOAT: OscType = OscType.FLOAT
 val STRING: OscType = OscType.STRING
+val BOOL: OscType = OscType.BOOL
+val BLOB: OscType = OscType.BLOB
 val VALUE: ScalarRole = ScalarRole.VALUE
 val LENGTH: ScalarRole = ScalarRole.LENGTH
 
 class OscSchemaBuilder {
     private val messages = mutableListOf<OscMessageSpec>()
+    private val bundles = mutableListOf<OscBundleSpec>()
 
     fun message(path: String, block: OscMessageBuilder.() -> Unit) {
         val builder = OscMessageBuilder(path)
@@ -27,7 +31,13 @@ class OscSchemaBuilder {
         messages += builder.build()
     }
 
-    internal fun build(): OscSchema = OscSchema(messages.toList())
+    fun bundle(name: String, block: OscBundleBuilder.() -> Unit) {
+        val builder = OscBundleBuilder(name)
+        builder.block()
+        bundles += builder.build()
+    }
+
+    internal fun build(): OscSchema = OscSchema(messages = messages.toList(), bundles = bundles.toList())
 }
 
 class OscMessageBuilder(
@@ -125,4 +135,23 @@ fun oscSchema(block: OscSchemaBuilder.() -> Unit): OscSchema {
     val builder = OscSchemaBuilder()
     builder.block()
     return builder.build()
+}
+
+class OscBundleBuilder(private val rawName: String) {
+    private var textDescription: String? = null
+    private val refs = mutableListOf<String>()
+
+    fun description(value: String) {
+        textDescription = value.trim()
+    }
+
+    fun message(ref: String) {
+        refs += ref.trim()
+    }
+
+    internal fun build(): OscBundleSpec = OscBundleSpec(
+        name = rawName.trim(),
+        description = textDescription,
+        messageRefs = refs.toList(),
+    )
 }

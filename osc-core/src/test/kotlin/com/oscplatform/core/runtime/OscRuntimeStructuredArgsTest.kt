@@ -22,7 +22,21 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertIs
 import kotlin.test.assertTrue
 
+/**
+ * [OscRuntime] における構造型引数（タプル配列・共有長さフィールド）の
+ * フラット化（send）および再構成（receive）を検証するテスト。
+ *
+ * - 引数のフラット化: Map/List 構造 → OSC ワイヤー列
+ * - 第一引数からの長さ自動導出 (deriveLengths)
+ * - 受信後の再構成: OSC ワイヤー列 → namedArgs Map
+ * - 異常系: 長さ不一致 / 不明ティプルフィールド / null 要素 / 車輪数エラー
+ */
 class OscRuntimeStructuredArgsTest {
+
+    // -------------------------------------------------------------------------
+    // send: 正常系
+    // -------------------------------------------------------------------------
+
     @Test
     fun sendFlattensStructuredArgsAndDerivesLength(): Unit = runBlocking {
         val transport = FakeTransport()
@@ -43,6 +57,10 @@ class OscRuntimeStructuredArgsTest {
         assertEquals("/mesh/points", packet.address)
         assertEquals(listOf(2, 1, 2, 3.0f, 4, 5, 6.5f), packet.arguments)
     }
+
+    // -------------------------------------------------------------------------
+    // send: 異常系
+    // -------------------------------------------------------------------------
 
     @Test
     fun sendRejectsLengthMismatch(): Unit = runBlocking {
@@ -104,6 +122,10 @@ class OscRuntimeStructuredArgsTest {
         assertTrue(ex.message?.contains("Null array element") == true)
     }
 
+    // -------------------------------------------------------------------------
+    // send: 共有長さフィールド (2配列共有)
+    // -------------------------------------------------------------------------
+
     @Test
     fun sendDerivesSharedLengthForMultipleArrays(): Unit = runBlocking {
         val transport = FakeTransport()
@@ -142,6 +164,10 @@ class OscRuntimeStructuredArgsTest {
         assertTrue(ex.message?.contains("Conflicting derived length") == true)
     }
 
+    // -------------------------------------------------------------------------
+    // receive: 正常系
+    // -------------------------------------------------------------------------
+
     @Test
     fun receiveUnflattensStructuredArgs(): Unit = runBlocking {
         val transport = FakeTransport()
@@ -176,6 +202,10 @@ class OscRuntimeStructuredArgsTest {
             runtime.stop()
         }
     }
+
+    // -------------------------------------------------------------------------
+    // receive: バリデーションエラー
+    // -------------------------------------------------------------------------
 
     @Test
     fun receiveEmitsValidationErrorForShortPayload(): Unit = runBlocking {

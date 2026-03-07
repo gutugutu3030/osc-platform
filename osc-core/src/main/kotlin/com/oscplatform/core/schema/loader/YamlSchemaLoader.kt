@@ -8,6 +8,7 @@ import com.fasterxml.jackson.module.kotlin.readValue
 import com.oscplatform.core.schema.ArrayArgNode
 import com.oscplatform.core.schema.ArrayItemSpec
 import com.oscplatform.core.schema.LengthSpec
+import com.oscplatform.core.schema.OscBundleSpec
 import com.oscplatform.core.schema.OscMessageSpec
 import com.oscplatform.core.schema.OscNaming
 import com.oscplatform.core.schema.OscSchema
@@ -20,6 +21,17 @@ import kotlin.io.path.inputStream
 
 private data class YamlSchemaDocument(
     val messages: List<YamlMessage> = emptyList(),
+    val bundles: List<YamlBundle> = emptyList(),
+)
+
+private data class YamlBundle(
+    val name: String = "",
+    val description: String? = null,
+    val messages: List<YamlBundleMessage> = emptyList(),
+)
+
+private data class YamlBundleMessage(
+    val ref: String = "",
 )
 
 private data class YamlMessage(
@@ -71,7 +83,20 @@ class YamlSchemaLoader(
             )
         }
 
-        return OscSchema(messages)
+        val bundles = doc.bundles.map { raw ->
+            require(raw.name.isNotBlank()) { "Bundle name cannot be blank" }
+            require(raw.messages.isNotEmpty()) { "Bundle '${raw.name}' must reference at least one message" }
+            OscBundleSpec(
+                name = raw.name.trim(),
+                description = raw.description,
+                messageRefs = raw.messages.map { m ->
+                    require(m.ref.isNotBlank()) { "Bundle '${raw.name}': message ref cannot be blank" }
+                    m.ref.trim()
+                },
+            )
+        }
+
+        return OscSchema(messages = messages, bundles = bundles)
     }
 
     private fun parseArg(arg: YamlArg, messagePath: String): com.oscplatform.core.schema.OscArgNode {

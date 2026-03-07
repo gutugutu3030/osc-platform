@@ -16,7 +16,18 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
+/**
+ * YAML スキーマの構造型引数（kind: array / kind: tuple）を
+ * [YamlSchemaLoader] が正しくパースすることを検証するテスト。
+ *
+ * length / lengthFrom の排他検証も画䏯する。
+ */
 class YamlSchemaLoaderStructuredArgsTest {
+
+    // -------------------------------------------------------------------------
+    // 正常系
+    // -------------------------------------------------------------------------
+
     @Test
   fun loadParsesStructuredArgs() {
         val yaml = """
@@ -63,6 +74,10 @@ class YamlSchemaLoaderStructuredArgsTest {
             path.deleteIfExists()
         }
     }
+
+    // -------------------------------------------------------------------------
+    // 異常系
+    // -------------------------------------------------------------------------
 
     @Test
     fun loadRejectsArrayWithBothLengthAndLengthFrom() {

@@ -4,7 +4,21 @@ import kotlin.test.Test
 import kotlin.test.assertFailsWith
 import kotlin.test.assertTrue
 
+/**
+ * [OscArgNodeValidator] のバリデーションルールを検証するテスト。
+ *
+ * 検証内容:
+ * - lengthFrom 参照先が role=LENGTH の ScalarArgNode であること
+ * - タプルフィールド名の重複がないこと
+ * - Fixed 長さが 0 以上であること
+ */
 class OscArgNodeValidatorTest {
+
+    // -------------------------------------------------------------------------
+    // 正常系
+    // -------------------------------------------------------------------------
+
+    /** lengthFrom 参照先が role=LENGTH 策定されている正常パターン */
     @Test
     fun validateAcceptsLengthReferencedTupleArray() {
         val args = listOf(
@@ -25,6 +39,11 @@ class OscArgNodeValidatorTest {
         OscArgNodeValidator.validate(path = "/mesh/points", args = args)
     }
 
+    // -------------------------------------------------------------------------
+    // 異常系
+    // -------------------------------------------------------------------------
+
+    /** lengthFrom が指すフィールドが role=VALUE のため拒否される */
     @Test
     fun validateRejectsLengthReferenceToNonLengthScalar() {
         val ex = assertFailsWith<IllegalArgumentException> {
@@ -44,6 +63,7 @@ class OscArgNodeValidatorTest {
         assertTrue(ex.message?.contains("role=LENGTH") == true)
     }
 
+    /** タプル内で同名のフィールドが存在するため拒否される */
     @Test
     fun validateRejectsDuplicateTupleFieldNames() {
         val ex = assertFailsWith<IllegalArgumentException> {
@@ -68,6 +88,7 @@ class OscArgNodeValidatorTest {
         assertTrue(ex.message?.contains("Duplicate tuple field names") == true)
     }
 
+    /** Fixed 長さに負数を指定したため拒否される */
     @Test
     fun validateRejectsNegativeFixedLength() {
         val ex = assertFailsWith<IllegalArgumentException> {

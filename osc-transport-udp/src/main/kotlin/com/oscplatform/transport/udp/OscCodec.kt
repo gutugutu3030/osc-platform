@@ -36,6 +36,8 @@ internal object OscCodec {
                         is Int -> 'i'
                         is Float, is Double -> 'f'
                         is String -> 's'
+                        is Boolean -> if (arg) 'T' else 'F'
+                        is ByteArray -> 'b'
                         else -> error("Unsupported OSC argument type: ${arg?.let { it::class.simpleName } ?: "null"}")
                     },
                 )
@@ -44,14 +46,16 @@ internal object OscCodec {
         payload += encodeOscString(typeTag)
 
         packet.arguments.forEach { arg ->
-            val bytes = when (arg) {
+            val bytes: ByteArray? = when (arg) {
                 is Int -> ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(arg).array()
                 is Float -> ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putFloat(arg).array()
                 is Double -> ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putFloat(arg.toFloat()).array()
                 is String -> encodeOscString(arg)
+                is Boolean -> null  // bool は type tag のみ、データバイトなし
+                is ByteArray -> encodeOscBlob(arg)
                 else -> error("Unsupported OSC argument type: ${arg?.let { it::class.simpleName } ?: "null"}")
             }
-            payload += bytes
+            if (bytes != null) payload += bytes
         }
 
         return join(payload)
@@ -64,10 +68,13 @@ internal object OscCodec {
 
         val args = mutableListOf<Any?>()
         typeTag.drop(1).forEach { tag ->
-            val value = when (tag) {
+            val value: Any? = when (tag) {
                 'i' -> buffer.int
                 'f' -> buffer.float
                 's' -> readOscString(buffer)
+                'T' -> true
+                'F' -> false
+                'b' -> decodeOscBlob(buffer)
                 else -> error("Unsupported OSC type tag: $tag")
             }
             args += value
@@ -103,6 +110,22 @@ internal object OscCodec {
             elements += decode(chunk)
         }
         return OscBundlePacket(timeTag = timeTag, elements = elements)
+    }
+
+    private fun encodeOscBlob(value: ByteArray): ByteArray {
+        val sizeBytes = ByteBuffer.allocate(4).order(ByteOrder.BIG_ENDIAN).putInt(value.size).array()
+        val paddedData = ByteArray(paddedSize(value.size))
+        value.copyInto(paddedData)
+        return join(listOf(sizeBytes, paddedData))
+    }
+
+    private fun decodeOscBlob(buffer: ByteBuffer): ByteArray {
+        val size = buffer.int
+        val bytes = ByteArray(size)
+        buffer.get(bytes)
+        val padding = paddingFor(size)
+        if (padding > 0) buffer.position(buffer.position() + padding)
+        return bytes
     }
 
     private fun encodeOscString(value: String): ByteArray {

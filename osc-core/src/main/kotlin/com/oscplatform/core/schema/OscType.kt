@@ -4,6 +4,8 @@ enum class OscType {
     INT,
     FLOAT,
     STRING,
+    BOOL,
+    BLOB,
     ;
 
     companion object {
@@ -12,6 +14,8 @@ enum class OscType {
                 "int", "integer", "i" -> INT
                 "float", "f" -> FLOAT
                 "string", "str", "s" -> STRING
+                "bool", "boolean" -> BOOL
+                "blob", "bytes" -> BLOB
                 else -> error("Unsupported OSC type: $token")
             }
         }

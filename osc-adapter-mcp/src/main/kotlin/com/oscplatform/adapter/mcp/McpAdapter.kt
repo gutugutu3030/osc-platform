@@ -9,6 +9,7 @@ import com.oscplatform.core.schema.ArrayArgNode
 import com.oscplatform.core.schema.ArrayItemSpec
 import com.oscplatform.core.schema.LengthSpec
 import com.oscplatform.core.schema.OscArgNode
+import com.oscplatform.core.schema.OscBundleSpec
 import com.oscplatform.core.runtime.OscRuntime
 import com.oscplatform.core.schema.OscMessageSpec
 import com.oscplatform.core.schema.OscNaming
@@ -51,11 +52,28 @@ class McpAdapter(
         val runtime = OscRuntime(schema = schema, transport = transport)
 
         val toolByName = schema.messages.associateBy { OscNaming.mcpToolName(it.path) }
+        val bundleMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+        val bundleToolByName = schema.bundles.associate { bundleSpec ->
+            val resolvedSpecs = bundleSpec.messageRefs.map { ref ->
+                schema.resolveMessage(ref)!!
+            }
+            val inputSchema = McpSchemaJsonSupport.toBundleInputSchema(
+                mapper = bundleMapper,
+                bundleSpec = bundleSpec,
+                resolvedSpecs = resolvedSpecs,
+            )
+            OscNaming.bundleToolName(bundleSpec.name) to McpBundleTool(
+                spec = bundleSpec,
+                resolvedSpecs = resolvedSpecs,
+                inputSchema = inputSchema,
+            )
+        }
         val protocol = McpStdioProtocol(input = input, output = output)
         val server = OscMcpServer(
             protocol = protocol,
             runtime = runtime,
             toolByName = toolByName,
+            bundleToolByName = bundleToolByName,
             target = OscTarget(parsed.host, parsed.port),
         )
 
@@ -167,6 +185,7 @@ private class OscMcpServer(
     private val protocol: McpStdioProtocol,
     private val runtime: OscRuntime,
     private val toolByName: Map<String, OscMessageSpec>,
+    private val bundleToolByName: Map<String, McpBundleTool> = emptyMap(),
     private val target: OscTarget,
 ) {
     private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
@@ -223,15 +242,38 @@ private class OscMcpServer(
             val name = params.path("name").asText("")
             require(name.isNotBlank()) { "Tool name is required" }
 
-            val spec = toolByName[name] ?: error("Unknown tool: $name")
-            val argsNode = params.path("arguments")
-
             val argMap = linkedMapOf<String, Any?>()
+            val argsNode = params.path("arguments")
             if (argsNode.isObject) {
                 argsNode.fields().forEach { (argName, node) ->
                     argMap[argName] = jsonNodeToValue(node)
                 }
             }
+
+            val bundleTool = bundleToolByName[name]
+            if (bundleTool != null) {
+                val bundleMessages = bundleTool.resolvedSpecs.map { msgSpec ->
+                    val perMessageArgs = argMap.filterKeys { argName ->
+                        msgSpec.args.any { it.name == argName }
+                    }
+                    msgSpec.name to perMessageArgs
+                }
+                runtime.sendBundle(messages = bundleMessages, target = target)
+
+                val text = bundleTool.resolvedSpecs.joinToString(", ") { it.path }
+                val result = mapper.createObjectNode().apply {
+                    val content = mapper.createArrayNode()
+                    content.add(mapper.createObjectNode().apply {
+                        put("type", "text")
+                        put("text", "sent bundle [${bundleTool.spec.name}] ($text) to ${target.host}:${target.port}")
+                    })
+                    set<ArrayNode>("content", content)
+                }
+                protocol.writeMessage(resultResponse(id, result))
+                return
+            }
+
+            val spec = toolByName[name] ?: error("Unknown tool: $name")
 
             runtime.send(
                 messageRef = spec.name,
@@ -276,6 +318,14 @@ private class OscMcpServer(
                     set<ObjectNode>("inputSchema", toInputSchema(spec))
                 })
             }
+            bundleToolByName.forEach { (toolName, bundleTool) ->
+                val paths = bundleTool.resolvedSpecs.joinToString(", ") { it.path }
+                toolsNode.add(mapper.createObjectNode().apply {
+                    put("name", toolName)
+                    put("description", bundleTool.spec.description ?: "Send OSC bundle [${bundleTool.spec.name}] ($paths)")
+                    set<ObjectNode>("inputSchema", bundleTool.inputSchema)
+                })
+            }
             set<ArrayNode>("tools", toolsNode)
         }
     }
@@ -308,7 +358,37 @@ private class OscMcpServer(
     }
 }
 
+internal data class McpBundleTool(
+    val spec: OscBundleSpec,
+    val resolvedSpecs: List<OscMessageSpec>,
+    val inputSchema: ObjectNode,
+)
+
 internal object McpSchemaJsonSupport {
+    fun toBundleInputSchema(
+        mapper: ObjectMapper,
+        bundleSpec: OscBundleSpec,
+        resolvedSpecs: List<OscMessageSpec>,
+    ): ObjectNode {
+        val properties = mapper.createObjectNode()
+        val required = mapper.createArrayNode()
+
+        resolvedSpecs.forEach { spec ->
+            val specSchema = toInputSchema(mapper = mapper, spec = spec)
+            specSchema.path("properties").fields().forEach { (name, schema) ->
+                properties.set<ObjectNode>(name, schema as ObjectNode)
+            }
+            specSchema.path("required").forEach { node -> required.add(node.asText()) }
+        }
+
+        return mapper.createObjectNode().apply {
+            put("type", "object")
+            set<ObjectNode>("properties", properties)
+            set<ArrayNode>("required", required)
+            put("additionalProperties", false)
+        }
+    }
+
     fun toInputSchema(mapper: ObjectMapper, spec: OscMessageSpec): ObjectNode {
         val properties = mapper.createObjectNode()
         val required = mapper.createArrayNode()
@@ -392,12 +472,17 @@ internal object McpSchemaJsonSupport {
     }
 
     private fun jsonScalarSchema(mapper: ObjectMapper, type: OscType): ObjectNode {
-        val typeString = when (type) {
-            OscType.INT -> "integer"
-            OscType.FLOAT -> "number"
-            OscType.STRING -> "string"
+        return when (type) {
+            OscType.INT -> mapper.createObjectNode().apply { put("type", "integer") }
+            OscType.FLOAT -> mapper.createObjectNode().apply { put("type", "number") }
+            OscType.STRING -> mapper.createObjectNode().apply { put("type", "string") }
+            OscType.BOOL -> mapper.createObjectNode().apply { put("type", "boolean") }
+            OscType.BLOB -> mapper.createObjectNode().apply {
+                put("type", "string")
+                put("contentEncoding", "base64")
+                put("description", "base64-encoded binary data")
+            }
         }
-        return mapper.createObjectNode().apply { put("type", typeString) }
     }
 
     fun jsonNodeToValue(node: JsonNode): Any? {

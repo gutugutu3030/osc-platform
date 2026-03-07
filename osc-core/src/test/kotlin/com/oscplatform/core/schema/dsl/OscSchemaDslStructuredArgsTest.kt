@@ -11,7 +11,18 @@ import kotlin.test.assertEquals
 import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 
+/**
+ * [oscSchema] DSL における構造型引数（配列・タプル）の定義を検証するテスト。
+ *
+ * DSL が [ArrayArgNode] / [com.oscplatform.core.schema.ArrayItemSpec.TupleItem] /
+ * [com.oscplatform.core.schema.LengthSpec] を正しく構築することを確認する。
+ */
 class OscSchemaDslStructuredArgsTest {
+
+    // -------------------------------------------------------------------------
+    // array + tuple
+    // -------------------------------------------------------------------------
+
     @Test
     fun dslBuildsStructuredArgs() {
         val schema = oscSchema {
@@ -41,6 +52,10 @@ class OscSchemaDslStructuredArgsTest {
         assertEquals(listOf("x", "y", "z"), tuple.fields.map { it.name })
         assertEquals(listOf(OscType.INT, OscType.INT, OscType.FLOAT), tuple.fields.map { it.type })
     }
+
+    // -------------------------------------------------------------------------
+    // scalar ショートハンド (arg())
+    // -------------------------------------------------------------------------
 
     @Test
     fun argShorthandCreatesScalarValueNodes() {

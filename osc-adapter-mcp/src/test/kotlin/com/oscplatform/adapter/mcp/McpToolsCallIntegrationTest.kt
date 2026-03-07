@@ -50,6 +50,7 @@ class McpToolsCallIntegrationTest {
     // テストケース
     // -------------------------------------------------------------------------
 
+    /** 正しいツール名と引数を渡すと result が返り、OSC パケットが送信される */
     @Test
     fun toolsCallWithValidToolReturnsResult() {
         val schemaFile = Files.createTempFile("osc-test-schema", ".yaml")
@@ -92,6 +93,7 @@ class McpToolsCallIntegrationTest {
         }
     }
 
+    /** スキーマに存在しないツール名を呼ぶと -32000 エラーが返る */
     @Test
     fun toolsCallWithUnknownToolReturnsError() {
         val schemaFile = Files.createTempFile("osc-test-schema", ".yaml")
@@ -125,6 +127,7 @@ class McpToolsCallIntegrationTest {
         }
     }
 
+    /** トランスポートが例外をスローした場合も -32000 エラーとして返る */
     @Test
     fun toolsCallWithTransportFailureReturnsError() {
         val schemaFile = Files.createTempFile("osc-test-schema", ".yaml")
@@ -154,6 +157,7 @@ class McpToolsCallIntegrationTest {
         }
     }
 
+    /** 複数リクエストが入力順に処理され、失敗したツール呼び出しは OSC を送信しない */
     @Test
     fun multipleRequestsAreProcessedInOrder() {
         val schemaFile = Files.createTempFile("osc-test-schema", ".yaml")
