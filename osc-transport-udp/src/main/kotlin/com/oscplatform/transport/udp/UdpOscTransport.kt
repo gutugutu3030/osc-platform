@@ -3,6 +3,7 @@ package com.oscplatform.transport.udp
 import com.oscplatform.core.transport.OscPacket
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.core.transport.OscTransport
+import com.oscplatform.core.transport.TransportError
 import java.net.DatagramPacket
 import java.net.DatagramSocket
 import java.net.InetAddress
@@ -19,6 +20,9 @@ import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
+/** 連続受信失敗がこの回数を超えた場合に受信ループを停止するサーキットブレーカ閾値。 */
+private const val CIRCUIT_BREAKER_THRESHOLD = 25
+
 class UdpOscTransport(
     private val bindHost: String,
     private val bindPort: Int,
@@ -26,6 +30,19 @@ class UdpOscTransport(
 ) : OscTransport {
   private val _incomingPackets = MutableSharedFlow<OscPacket>(extraBufferCapacity = 256)
   override val incomingPackets: Flow<OscPacket> = _incomingPackets.asSharedFlow()
+
+  private val _errors = MutableSharedFlow<TransportError>(extraBufferCapacity = 64)
+  override val errors: Flow<TransportError> = _errors.asSharedFlow()
+
+  /** 現在までの連続受信失敗回数。正常受信時にリセットされる。 */
+  @Volatile
+  var consecutiveErrorCount: Int = 0
+    private set
+
+  /** 最後に発生した受信エラー。正常受信時にリセットされる。 */
+  @Volatile
+  var lastReceiveError: Throwable? = null
+    private set
 
   @Volatile private var receiveSocket: DatagramSocket? = null
   private var receiveJob: Job? = null
@@ -68,13 +85,24 @@ class UdpOscTransport(
         socket.receive(datagram)
         val payload = datagram.data.copyOf(datagram.length)
         val packet = OscCodec.decode(payload)
+        consecutiveErrorCount = 0
+        lastReceiveError = null
         _incomingPackets.emit(packet)
       } catch (socketClosed: SocketException) {
         if (!socket.isClosed) {
           throw socketClosed
         }
-      } catch (_: Exception) {
-        // Keep receive loop alive for malformed packets.
+      } catch (ex: Exception) {
+        consecutiveErrorCount++
+        lastReceiveError = ex
+        _errors.tryEmit(TransportError(cause = ex, consecutiveCount = consecutiveErrorCount))
+        if (consecutiveErrorCount >= CIRCUIT_BREAKER_THRESHOLD) {
+          // 連続失敗が閾値を超えたため受信ループを停止する
+          throw IllegalStateException(
+              "UDP receive loop stopped after $consecutiveErrorCount consecutive errors. Last error: ${ex.message}",
+              ex,
+          )
+        }
         delay(2)
       }
     }

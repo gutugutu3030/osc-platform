@@ -71,6 +71,13 @@ class CliAdapter(
               is OscRuntimeEvent.ValidationError -> {
                 err.println("validation_error ${event.address ?: "-"}: ${event.reason}")
               }
+
+              is OscRuntimeEvent.TransportErrorEvent -> {
+                val e = event.error
+                err.println(
+                    "transport_error [consecutive=${e.consecutiveCount}]: ${e.cause.message}",
+                )
+              }
             }
           }
         }

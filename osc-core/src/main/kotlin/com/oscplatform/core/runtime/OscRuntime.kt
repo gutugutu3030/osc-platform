@@ -13,6 +13,7 @@ import com.oscplatform.core.transport.OscMessagePacket
 import com.oscplatform.core.transport.OscPacket
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.core.transport.OscTransport
+import com.oscplatform.core.transport.TransportError
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.CopyOnWriteArrayList
 import kotlinx.coroutines.CoroutineScope
@@ -35,6 +36,11 @@ sealed interface OscRuntimeEvent {
   data class ValidationError(
       val reason: String,
       val address: String?,
+  ) : OscRuntimeEvent
+
+  /** Transport受信ループで発生したエラー。連続失敗回数を含む。 */
+  data class TransportErrorEvent(
+      val error: TransportError,
   ) : OscRuntimeEvent
 }
 
@@ -63,6 +69,9 @@ class OscRuntime(
     transport.start()
     receiveJob =
         scope.launch { transport.incomingPackets.collect { packet -> processPacket(packet) } }
+    scope.launch {
+      transport.errors.collect { err -> _events.emit(OscRuntimeEvent.TransportErrorEvent(err)) }
+    }
   }
 
   suspend fun stop() {

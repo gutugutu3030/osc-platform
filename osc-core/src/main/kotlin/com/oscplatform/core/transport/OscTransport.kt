@@ -1,6 +1,7 @@
 package com.oscplatform.core.transport
 
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 
 sealed interface OscPacket
 
@@ -19,8 +20,17 @@ data class OscTarget(
     val port: Int,
 )
 
+data class TransportError(
+    val cause: Throwable,
+    val consecutiveCount: Int,
+)
+
 interface OscTransport {
   val incomingPackets: Flow<OscPacket>
+
+  /** 受信ループ中に発生したエラーを通知するFlow。未実装の実装はemptyFlowを返す。 */
+  val errors: Flow<TransportError>
+    get() = emptyFlow()
 
   suspend fun start()
 
