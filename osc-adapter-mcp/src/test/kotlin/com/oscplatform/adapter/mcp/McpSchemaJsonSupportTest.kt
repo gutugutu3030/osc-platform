@@ -1,7 +1,8 @@
 package com.oscplatform.adapter.mcp
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.module.kotlin.KotlinModule
 import com.oscplatform.core.schema.OscMessageSpec
 import com.oscplatform.core.schema.dsl.BLOB
 import com.oscplatform.core.schema.dsl.BOOL
@@ -24,7 +25,7 @@ import kotlin.test.assertTrue
  * - [McpSchemaJsonSupport.jsonNodeToValue]: Jackson JsonNode → Kotlin ネイティブ⋮
  */
 class McpSchemaJsonSupportTest {
-    private val mapper: ObjectMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+    private val mapper: ObjectMapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     // -------------------------------------------------------------------------
     // toInputSchema: 配列・タプル横断
@@ -38,7 +39,7 @@ class McpSchemaJsonSupportTest {
         val schemaNode = McpSchemaJsonSupport.toInputSchema(mapper = mapper, spec = spec)
 
         val required = schemaNode.path("required")
-        val requiredNames = required.map { it.asText() }.toSet()
+        val requiredNames = required.toList().map { it.asText() }.toSet()
         assertTrue(requiredNames.contains("points"))
         assertFalse(requiredNames.contains("pointCount"))
 
@@ -49,7 +50,7 @@ class McpSchemaJsonSupportTest {
         val tupleSchema = pointsSchema.path("items")
         assertEquals("object", tupleSchema.path("type").asText())
 
-        val tupleRequired = tupleSchema.path("required").map { it.asText() }.toSet()
+        val tupleRequired = tupleSchema.path("required").toList().map { it.asText() }.toSet()
         assertEquals(setOf("x", "y", "z"), tupleRequired)
         assertEquals("integer", tupleSchema.path("properties").path("x").path("type").asText())
         assertEquals("number", tupleSchema.path("properties").path("z").path("type").asText())
@@ -144,7 +145,7 @@ class McpSchemaJsonSupportTest {
         val enabledSchema = schemaNode.path("properties").path("enabled")
         assertEquals("boolean", enabledSchema.path("type").asText())
         // required に含まれること
-        val required = schemaNode.path("required").map { it.asText() }.toSet()
+        val required = schemaNode.path("required").toList().map { it.asText() }.toSet()
         assertTrue(required.contains("enabled"))
     }
 
@@ -163,7 +164,7 @@ class McpSchemaJsonSupportTest {
         val payloadSchema = schemaNode.path("properties").path("payload")
         assertEquals("string", payloadSchema.path("type").asText())
         assertEquals("base64", payloadSchema.path("contentEncoding").asText())
-        val required = schemaNode.path("required").map { it.asText() }.toSet()
+        val required = schemaNode.path("required").toList().map { it.asText() }.toSet()
         assertTrue(required.contains("payload"))
     }
 

@@ -1,10 +1,11 @@
 package com.oscplatform.adapter.mcp
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ArrayNode
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.node.ArrayNode
+import tools.jackson.databind.node.ObjectNode
+import tools.jackson.module.kotlin.KotlinModule
 import com.oscplatform.core.schema.ArrayArgNode
 import com.oscplatform.core.schema.ArrayItemSpec
 import com.oscplatform.core.schema.LengthSpec
@@ -52,7 +53,7 @@ class McpAdapter(
         val runtime = OscRuntime(schema = schema, transport = transport)
 
         val toolByName = schema.messages.associateBy { OscNaming.mcpToolName(it.path) }
-        val bundleMapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+        val bundleMapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
         val bundleToolByName = schema.bundles.associate { bundleSpec ->
             val resolvedSpecs = bundleSpec.messageRefs.map { ref ->
                 schema.resolveMessage(ref)!!
@@ -188,7 +189,7 @@ private class OscMcpServer(
     private val bundleToolByName: Map<String, McpBundleTool> = emptyMap(),
     private val target: OscTarget,
 ) {
-    private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+    private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     suspend fun run() {
         while (true) {
@@ -245,7 +246,7 @@ private class OscMcpServer(
             val argMap = linkedMapOf<String, Any?>()
             val argsNode = params.path("arguments")
             if (argsNode.isObject) {
-                argsNode.fields().forEach { (argName, node) ->
+                argsNode.properties().forEach { (argName, node) ->
                     argMap[argName] = jsonNodeToValue(node)
                 }
             }
@@ -267,7 +268,7 @@ private class OscMcpServer(
                         put("type", "text")
                         put("text", "sent bundle [${bundleTool.spec.name}] ($text) to ${target.host}:${target.port}")
                     })
-                    set<ArrayNode>("content", content)
+                    set("content", content)
                 }
                 protocol.writeMessage(resultResponse(id, result))
                 return
@@ -287,7 +288,7 @@ private class OscMcpServer(
                     put("type", "text")
                     put("text", "sent ${spec.path} to ${target.host}:${target.port}")
                 })
-                set<ArrayNode>("content", content)
+                set("content", content)
             }
             protocol.writeMessage(resultResponse(id, result))
         } catch (ex: Exception) {
@@ -298,10 +299,10 @@ private class OscMcpServer(
     private fun initializeResult(): ObjectNode {
         return mapper.createObjectNode().apply {
             put("protocolVersion", "2024-11-05")
-            set<ObjectNode>("capabilities", mapper.createObjectNode().apply {
-                set<ObjectNode>("tools", mapper.createObjectNode())
+            set("capabilities", mapper.createObjectNode().apply {
+                set("tools", mapper.createObjectNode())
             })
-            set<ObjectNode>("serverInfo", mapper.createObjectNode().apply {
+            set("serverInfo", mapper.createObjectNode().apply {
                 put("name", "osc-platform")
                 put("version", "0.1.0")
             })
@@ -315,7 +316,7 @@ private class OscMcpServer(
                 toolsNode.add(mapper.createObjectNode().apply {
                     put("name", toolName)
                     put("description", spec.description ?: "Send OSC message to ${spec.path}")
-                    set<ObjectNode>("inputSchema", toInputSchema(spec))
+                    set("inputSchema", toInputSchema(spec))
                 })
             }
             bundleToolByName.forEach { (toolName, bundleTool) ->
@@ -323,10 +324,10 @@ private class OscMcpServer(
                 toolsNode.add(mapper.createObjectNode().apply {
                     put("name", toolName)
                     put("description", bundleTool.spec.description ?: "Send OSC bundle [${bundleTool.spec.name}] ($paths)")
-                    set<ObjectNode>("inputSchema", bundleTool.inputSchema)
+                    set("inputSchema", bundleTool.inputSchema)
                 })
             }
-            set<ArrayNode>("tools", toolsNode)
+            set("tools", toolsNode)
         }
     }
 
@@ -337,16 +338,16 @@ private class OscMcpServer(
     private fun resultResponse(id: JsonNode, result: ObjectNode): ObjectNode {
         return mapper.createObjectNode().apply {
             put("jsonrpc", "2.0")
-            set<JsonNode>("id", id)
-            set<ObjectNode>("result", result)
+            set("id", id)
+            set("result", result)
         }
     }
 
     private fun errorResponse(id: JsonNode, code: Int, message: String): ObjectNode {
         return mapper.createObjectNode().apply {
             put("jsonrpc", "2.0")
-            set<JsonNode>("id", id)
-            set<ObjectNode>("error", mapper.createObjectNode().apply {
+            set("id", id)
+            set("error", mapper.createObjectNode().apply {
                 put("code", code)
                 put("message", message)
             })
@@ -375,16 +376,16 @@ internal object McpSchemaJsonSupport {
 
         resolvedSpecs.forEach { spec ->
             val specSchema = toInputSchema(mapper = mapper, spec = spec)
-            specSchema.path("properties").fields().forEach { (name, schema) ->
-                properties.set<ObjectNode>(name, schema as ObjectNode)
+            specSchema.path("properties").properties().forEach { (name, schema) ->
+                properties.set(name, schema as ObjectNode)
             }
             specSchema.path("required").forEach { node -> required.add(node.asText()) }
         }
 
         return mapper.createObjectNode().apply {
             put("type", "object")
-            set<ObjectNode>("properties", properties)
-            set<ArrayNode>("required", required)
+            set("properties", properties)
+            set("required", required)
             put("additionalProperties", false)
         }
     }
@@ -406,7 +407,7 @@ internal object McpSchemaJsonSupport {
             .toSet()
 
         spec.args.forEach { arg ->
-            properties.set<ObjectNode>(arg.name, toJsonSchemaForArg(mapper = mapper, arg = arg))
+            properties.set(arg.name, toJsonSchemaForArg(mapper = mapper, arg = arg))
 
             val isOptionalDerivedLength = arg is ScalarArgNode &&
                 arg.role == ScalarRole.LENGTH &&
@@ -418,8 +419,8 @@ internal object McpSchemaJsonSupport {
 
         return mapper.createObjectNode().apply {
             put("type", "object")
-            set<ObjectNode>("properties", properties)
-            set<ArrayNode>("required", required)
+            set("properties", properties)
+            set("required", required)
             put("additionalProperties", false)
         }
     }
@@ -435,7 +436,7 @@ internal object McpSchemaJsonSupport {
 
             is ArrayArgNode -> mapper.createObjectNode().apply {
                 put("type", "array")
-                set<ObjectNode>("items", toJsonSchemaForArrayItem(mapper = mapper, item = arg.item))
+                set("items", toJsonSchemaForArrayItem(mapper = mapper, item = arg.item))
                 when (val length = arg.length) {
                     is LengthSpec.Fixed -> {
                         put("minItems", length.size)
@@ -458,13 +459,13 @@ internal object McpSchemaJsonSupport {
                 val properties = mapper.createObjectNode()
                 val required = mapper.createArrayNode()
                 item.fields.forEach { field ->
-                    properties.set<ObjectNode>(field.name, jsonScalarSchema(mapper = mapper, type = field.type))
+                    properties.set(field.name, jsonScalarSchema(mapper = mapper, type = field.type))
                     required.add(field.name)
                 }
                 mapper.createObjectNode().apply {
                     put("type", "object")
-                    set<ObjectNode>("properties", properties)
-                    set<ArrayNode>("required", required)
+                    set("properties", properties)
+                    set("required", required)
                     put("additionalProperties", false)
                 }
             }
@@ -492,9 +493,9 @@ internal object McpSchemaJsonSupport {
             node.isLong -> node.longValue()
             node.isFloat || node.isDouble || node.isBigDecimal -> node.doubleValue()
             node.isBoolean -> node.booleanValue()
-            node.isArray -> node.map { child -> jsonNodeToValue(child) }
+            node.isArray -> node.toList().map { child -> jsonNodeToValue(child) }
             node.isObject -> linkedMapOf<String, Any?>().also { map ->
-                node.fields().forEach { (key, value) ->
+                node.properties().forEach { (key, value) ->
                     map[key] = jsonNodeToValue(value)
                 }
             }
@@ -509,7 +510,7 @@ private class McpStdioProtocol(
     private val output: OutputStream,
 ) {
     private val input = BufferedInputStream(input)
-    private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+    private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     fun readMessage(): ByteArray? {
         var contentLength = -1

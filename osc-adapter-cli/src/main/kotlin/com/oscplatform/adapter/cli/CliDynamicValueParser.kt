@@ -1,11 +1,12 @@
 package com.oscplatform.adapter.cli
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.JsonNode
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.module.kotlin.KotlinModule
 
 internal object CliDynamicValueParser {
-    private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+    private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     fun parse(raw: String): Any? {
         val trimmed = raw.trim()
@@ -27,9 +28,9 @@ internal object CliDynamicValueParser {
             node.isLong -> node.longValue()
             node.isFloat || node.isDouble || node.isBigDecimal -> node.doubleValue()
             node.isBoolean -> node.booleanValue()
-            node.isArray -> node.map { child -> jsonNodeToValue(child) }
+            node.isArray -> node.toList().map { child -> jsonNodeToValue(child) }
             node.isObject -> linkedMapOf<String, Any?>().also { map ->
-                node.fields().forEach { (key, value) ->
+                node.properties().forEach { (key, value) ->
                     map[key] = jsonNodeToValue(value)
                 }
             }

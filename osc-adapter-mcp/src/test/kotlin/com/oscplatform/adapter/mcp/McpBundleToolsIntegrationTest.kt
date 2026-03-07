@@ -1,8 +1,9 @@
 package com.oscplatform.adapter.mcp
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.node.ObjectNode
+import tools.jackson.module.kotlin.KotlinModule
 import com.oscplatform.core.transport.OscBundlePacket
 import com.oscplatform.core.transport.OscMessagePacket
 import com.oscplatform.core.transport.OscPacket
@@ -27,7 +28,7 @@ import kotlin.test.assertTrue
  */
 class McpBundleToolsIntegrationTest {
 
-    private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+    private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     // バンドルを含む最小スキーマ
     private val schemaYaml = """
@@ -82,7 +83,7 @@ class McpBundleToolsIntegrationTest {
             val tools = result.path("tools")
             assertTrue(tools.isArray)
 
-            val toolNames = tools.map { it.path("name").asText() }.toSet()
+            val toolNames = tools.toList().map { it.path("name").asText() }.toSet()
             assertTrue(toolNames.contains("bundle_set_scene"), "bundle_set_scene が tools/list に含まれること: $toolNames")
             // 通常のメッセージツールも含まれること
             assertTrue(toolNames.contains("set_light_color"))
@@ -120,7 +121,7 @@ class McpBundleToolsIntegrationTest {
             assertEquals("integer", props.path("r").path("type").asText())
             assertEquals("boolean", props.path("enabled").path("type").asText())
 
-            val required = bundleTool.path("inputSchema").path("required").map { it.asText() }.toSet()
+            val required = bundleTool.path("inputSchema").path("required").toList().map { it.asText() }.toSet()
             assertTrue(required.containsAll(setOf("r", "g", "b", "enabled")))
         } finally {
             Files.deleteIfExists(schemaFile)

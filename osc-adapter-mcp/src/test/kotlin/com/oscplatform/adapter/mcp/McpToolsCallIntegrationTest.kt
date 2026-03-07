@@ -1,8 +1,9 @@
 package com.oscplatform.adapter.mcp
 
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.databind.node.ObjectNode
-import com.fasterxml.jackson.module.kotlin.KotlinModule
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.databind.node.ObjectNode
+import tools.jackson.module.kotlin.KotlinModule
 import com.oscplatform.core.transport.OscMessagePacket
 import com.oscplatform.core.transport.OscPacket
 import com.oscplatform.core.transport.OscTarget
@@ -27,7 +28,7 @@ import kotlin.test.assertTrue
  */
 class McpToolsCallIntegrationTest {
 
-    private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
+    private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
     // テスト用の最小スキーマ。/light/color → MCP ツール名 set_light_color
     private val schemaYaml = """
@@ -170,7 +171,7 @@ class McpToolsCallIntegrationTest {
                 transport = transport,
                 inputJson = listOf(
                     """{"jsonrpc":"2.0","id":10,"method":"tools/call","params":{"name":"set_light_color","arguments":{"r":1,"g":2,"b":3}}}""",
-                    """{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"unknown_x","arguments":{}}}}""",
+                    """{"jsonrpc":"2.0","id":11,"method":"tools/call","params":{"name":"unknown_x","arguments":{}}}""",
                     """{"jsonrpc":"2.0","id":12,"method":"tools/call","params":{"name":"set_light_color","arguments":{"r":4,"g":5,"b":6}}}""",
                 ),
             )

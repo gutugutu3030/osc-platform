@@ -1,10 +1,11 @@
 package com.oscplatform.core.schema.loader
 
-import com.fasterxml.jackson.databind.DeserializationFeature
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.dataformat.yaml.YAMLFactory
-import com.fasterxml.jackson.module.kotlin.KotlinModule
-import com.fasterxml.jackson.module.kotlin.readValue
+import tools.jackson.databind.DeserializationFeature
+import tools.jackson.databind.ObjectMapper
+import tools.jackson.dataformat.yaml.YAMLFactory
+import tools.jackson.dataformat.yaml.YAMLMapper
+import tools.jackson.module.kotlin.KotlinModule
+import tools.jackson.module.kotlin.readValue
 import com.oscplatform.core.schema.ArrayArgNode
 import com.oscplatform.core.schema.ArrayItemSpec
 import com.oscplatform.core.schema.LengthSpec
@@ -62,10 +63,13 @@ private data class YamlTupleField(
     val type: String = "",
 )
 
+val test =     YAMLFactory()
+
 class YamlSchemaLoader(
-    private val mapper: ObjectMapper = ObjectMapper(YAMLFactory())
-        .registerModule(KotlinModule.Builder().build())
-        .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false),
+    private val mapper: ObjectMapper = YAMLMapper.builder()
+        .addModule(KotlinModule.Builder().build())
+        .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
+        .build(),
 ) {
     fun load(path: Path): OscSchema {
         val doc = path.inputStream().use { mapper.readValue<YamlSchemaDocument>(it) }
