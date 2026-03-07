@@ -3,8 +3,30 @@ messages:
     description: set RGB color
     args:
       - name: r
+        kind: scalar
         type: int
       - name: g
+        kind: scalar
         type: int
       - name: b
+        kind: scalar
         type: int
+  - path: /mesh/points
+    description: set xyz points
+    args:
+      - name: pointCount
+        kind: scalar
+        type: int
+        role: length
+      - name: points
+        kind: array
+        lengthFrom: pointCount
+        items:
+          kind: tuple
+          fields:
+            - name: x
+              type: int
+            - name: y
+              type: int
+            - name: z
+              type: float

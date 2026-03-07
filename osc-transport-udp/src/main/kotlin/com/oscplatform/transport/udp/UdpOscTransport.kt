@@ -3,6 +3,11 @@ package com.oscplatform.transport.udp
 import com.oscplatform.core.transport.OscPacket
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.core.transport.OscTransport
+import com.oscplatform.core.transport.TransportError
+import java.net.DatagramPacket
+import java.net.DatagramSocket
+import java.net.InetAddress
+import java.net.SocketException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -14,84 +19,102 @@ import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
-import java.net.DatagramPacket
-import java.net.DatagramSocket
-import java.net.InetAddress
-import java.net.SocketException
+
+/** 連続受信失敗がこの回数を超えた場合に受信ループを停止するサーキットブレーカ閾値。 */
+private const val CIRCUIT_BREAKER_THRESHOLD = 25
 
 class UdpOscTransport(
     private val bindHost: String,
     private val bindPort: Int,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : OscTransport {
-    private val _incomingPackets = MutableSharedFlow<OscPacket>(extraBufferCapacity = 256)
-    override val incomingPackets: Flow<OscPacket> = _incomingPackets.asSharedFlow()
+  private val _incomingPackets = MutableSharedFlow<OscPacket>(extraBufferCapacity = 256)
+  override val incomingPackets: Flow<OscPacket> = _incomingPackets.asSharedFlow()
 
-    @Volatile
-    private var receiveSocket: DatagramSocket? = null
-    private var receiveJob: Job? = null
+  private val _errors = MutableSharedFlow<TransportError>(extraBufferCapacity = 64)
+  override val errors: Flow<TransportError> = _errors.asSharedFlow()
 
-    override suspend fun start() {
-        if (receiveSocket != null) {
-            return
+  /** 現在までの連続受信失敗回数。正常受信時にリセットされる。 */
+  @Volatile
+  var consecutiveErrorCount: Int = 0
+    private set
+
+  /** 最後に発生した受信エラー。正常受信時にリセットされる。 */
+  @Volatile
+  var lastReceiveError: Throwable? = null
+    private set
+
+  @Volatile private var receiveSocket: DatagramSocket? = null
+  private var receiveJob: Job? = null
+
+  override suspend fun start() {
+    if (receiveSocket != null) {
+      return
+    }
+
+    val hostAddress = InetAddress.getByName(bindHost)
+    val socket = DatagramSocket(bindPort, hostAddress)
+    receiveSocket = socket
+    receiveJob = scope.launch { receiveLoop(socket) }
+  }
+
+  override suspend fun stop() {
+    receiveSocket?.close()
+    receiveSocket = null
+    receiveJob?.cancel()
+    receiveJob = null
+  }
+
+  override suspend fun send(packet: OscPacket, target: OscTarget) {
+    val bytes = OscCodec.encode(packet)
+    withContext(Dispatchers.IO) {
+      val socket = receiveSocket
+      if (socket != null && !socket.isClosed) {
+        sendDatagram(socket, bytes, target)
+      } else {
+        DatagramSocket().use { ephemeral -> sendDatagram(ephemeral, bytes, target) }
+      }
+    }
+  }
+
+  private suspend fun receiveLoop(socket: DatagramSocket) {
+    val buffer = ByteArray(65535)
+    while (scope.isActive && !socket.isClosed) {
+      val datagram = DatagramPacket(buffer, buffer.size)
+      try {
+        socket.receive(datagram)
+        val payload = datagram.data.copyOf(datagram.length)
+        val packet = OscCodec.decode(payload)
+        consecutiveErrorCount = 0
+        lastReceiveError = null
+        _incomingPackets.emit(packet)
+      } catch (socketClosed: SocketException) {
+        if (!socket.isClosed) {
+          throw socketClosed
         }
-
-        val hostAddress = InetAddress.getByName(bindHost)
-        val socket = DatagramSocket(bindPort, hostAddress)
-        receiveSocket = socket
-        receiveJob = scope.launch {
-            receiveLoop(socket)
+      } catch (ex: Exception) {
+        consecutiveErrorCount++
+        lastReceiveError = ex
+        _errors.tryEmit(TransportError(cause = ex, consecutiveCount = consecutiveErrorCount))
+        if (consecutiveErrorCount >= CIRCUIT_BREAKER_THRESHOLD) {
+          // 連続失敗が閾値を超えたため受信ループを停止する
+          throw IllegalStateException(
+              "UDP receive loop stopped after $consecutiveErrorCount consecutive errors. Last error: ${ex.message}",
+              ex,
+          )
         }
+        delay(2)
+      }
     }
+  }
 
-    override suspend fun stop() {
-        receiveSocket?.close()
-        receiveSocket = null
-        receiveJob?.cancel()
-        receiveJob = null
-    }
-
-    override suspend fun send(packet: OscPacket, target: OscTarget) {
-        val bytes = OscCodec.encode(packet)
-        withContext(Dispatchers.IO) {
-            val socket = receiveSocket
-            if (socket != null && !socket.isClosed) {
-                sendDatagram(socket, bytes, target)
-            } else {
-                DatagramSocket().use { ephemeral ->
-                    sendDatagram(ephemeral, bytes, target)
-                }
-            }
-        }
-    }
-
-    private suspend fun receiveLoop(socket: DatagramSocket) {
-        val buffer = ByteArray(65535)
-        while (scope.isActive && !socket.isClosed) {
-            val datagram = DatagramPacket(buffer, buffer.size)
-            try {
-                socket.receive(datagram)
-                val payload = datagram.data.copyOf(datagram.length)
-                val packet = OscCodec.decode(payload)
-                _incomingPackets.emit(packet)
-            } catch (socketClosed: SocketException) {
-                if (!socket.isClosed) {
-                    throw socketClosed
-                }
-            } catch (_: Exception) {
-                // Keep receive loop alive for malformed packets.
-                delay(2)
-            }
-        }
-    }
-
-    private fun sendDatagram(
-        socket: DatagramSocket,
-        payload: ByteArray,
-        target: OscTarget,
-    ) {
-        val targetAddress = InetAddress.getByName(target.host)
-        val datagram = DatagramPacket(payload, payload.size, targetAddress, target.port)
-        socket.send(datagram)
-    }
+  private fun sendDatagram(
+      socket: DatagramSocket,
+      payload: ByteArray,
+      target: OscTarget,
+  ) {
+    val targetAddress = InetAddress.getByName(target.host)
+    val datagram = DatagramPacket(payload, payload.size, targetAddress, target.port)
+    socket.send(datagram)
+  }
 }

@@ -1,7 +1,12 @@
+val kotlinVersion: String by project
+val coroutinesVersion: String by project
+val jacksonVersion: String by project
+
 dependencies {
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:1.10.2")
-    implementation("com.fasterxml.jackson.core:jackson-databind:2.18.3")
-    implementation("com.fasterxml.jackson.module:jackson-module-kotlin:2.18.3")
-    implementation("com.fasterxml.jackson.dataformat:jackson-dataformat-yaml:2.18.3")
-    implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223:2.1.20")
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+  implementation("tools.jackson.core:jackson-databind:$jacksonVersion")
+  implementation("tools.jackson.module:jackson-module-kotlin:$jacksonVersion")
+  implementation("tools.jackson.dataformat:jackson-dataformat-yaml:$jacksonVersion")
+  implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223:$kotlinVersion")
+  testImplementation(kotlin("test"))
 }

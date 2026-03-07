@@ -1,24 +1,32 @@
 plugins {
-    kotlin("jvm") version "2.1.20" apply false
+  kotlin("jvm") apply false
+  id("com.diffplug.spotless")
 }
 
 allprojects {
-    group = "com.oscplatform"
-    version = "0.1.0"
+  group = "com.oscplatform"
+  version = "0.2.0"
 
-    repositories {
-        mavenCentral()
-    }
+  repositories { mavenCentral() }
 }
 
 subprojects {
-    apply(plugin = "org.jetbrains.kotlin.jvm")
+  apply(plugin = "org.jetbrains.kotlin.jvm")
 
-    extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
-        jvmToolchain(21)
-    }
+  extensions.configure<org.jetbrains.kotlin.gradle.dsl.KotlinJvmProjectExtension> {
+    jvmToolchain(21)
+  }
 
-    tasks.withType<Test> {
-        useJUnitPlatform()
-    }
+  tasks.withType<Test> { useJUnitPlatform() }
+}
+
+spotless {
+  kotlin {
+    target("**/*.kt")
+    ktfmt("0.54")
+  }
+  kotlinGradle {
+    target("**/*.gradle.kts")
+    ktfmt("0.54")
+  }
 }

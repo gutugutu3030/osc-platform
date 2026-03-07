@@ -8,11 +8,12 @@ class SchemaLoader(
     private val yamlLoader: YamlSchemaLoader = YamlSchemaLoader(),
     private val scriptLoader: KotlinScriptSchemaLoader = KotlinScriptSchemaLoader(),
 ) {
-    fun load(path: Path): OscSchema {
-        return when (path.extension.lowercase()) {
-            "yaml", "yml" -> yamlLoader.load(path)
-            "kts" -> scriptLoader.load(path)
-            else -> error("Unsupported schema extension: ${path.fileName}")
-        }
+  fun load(path: Path): OscSchema {
+    return when (path.extension.lowercase()) {
+      "yaml",
+      "yml" -> yamlLoader.load(path)
+      "kts" -> scriptLoader.load(path)
+      else -> error("Unsupported schema extension: ${path.fileName}")
     }
+  }
 }
