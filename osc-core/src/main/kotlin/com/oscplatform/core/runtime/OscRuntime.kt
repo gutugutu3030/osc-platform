@@ -444,8 +444,25 @@ class OscRuntime(
       OscType.BOOL ->
           when (raw) {
             is Boolean -> raw
-            is Int -> raw != 0
-            is String -> raw.lowercase() in listOf("true", "1", "yes")
+            is Int -> {
+              require(raw == 0 || raw == 1) {
+                "Value '$raw' is not a valid BOOL: integer must be 0 or 1"
+              }
+              raw != 0
+            }
+            is String ->
+                when (raw.lowercase()) {
+                  "true",
+                  "1",
+                  "yes" -> true
+                  "false",
+                  "0",
+                  "no" -> false
+                  else ->
+                      throw IllegalArgumentException(
+                          "Value '$raw' is not a valid BOOL: expected true/false/1/0/yes/no",
+                      )
+                }
             else -> throw IllegalArgumentException("Value '$raw' is not a valid BOOL")
           }
 

@@ -119,6 +119,50 @@ class OscRuntimeBoolBlobTest {
     }
   }
 
+  @Test
+  fun sendRejectsTypoBoolString(): Unit = runBlocking {
+    val transport = FakeBoolBlobTransport()
+    val runtime = OscRuntime(schema = flagSchema(), transport = transport)
+
+    // A2: "treu" のようなタイポはエラーにする（以前は false 扱いだった）
+    assertFailsWith<IllegalArgumentException> {
+      runtime.send(
+          messageRef = "/device/flag",
+          rawArgs = mapOf("enabled" to "treu"),
+          target = OscTarget("127.0.0.1", 9000),
+      )
+    }
+  }
+
+  @Test
+  fun sendRejectsUnknownBoolString(): Unit = runBlocking {
+    val transport = FakeBoolBlobTransport()
+    val runtime = OscRuntime(schema = flagSchema(), transport = transport)
+
+    assertFailsWith<IllegalArgumentException> {
+      runtime.send(
+          messageRef = "/device/flag",
+          rawArgs = mapOf("enabled" to "on"),
+          target = OscTarget("127.0.0.1", 9000),
+      )
+    }
+  }
+
+  @Test
+  fun sendRejectsOutOfRangeBoolInt(): Unit = runBlocking {
+    val transport = FakeBoolBlobTransport()
+    val runtime = OscRuntime(schema = flagSchema(), transport = transport)
+
+    // A2: 0/1 以外の整数はエラー
+    assertFailsWith<IllegalArgumentException> {
+      runtime.send(
+          messageRef = "/device/flag",
+          rawArgs = mapOf("enabled" to 2),
+          target = OscTarget("127.0.0.1", 9000),
+      )
+    }
+  }
+
   // -------------------------------------------------------------------------
   // BOOL 型: receive (unflatten)
   // -------------------------------------------------------------------------
