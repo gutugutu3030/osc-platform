@@ -17,6 +17,7 @@ import com.oscplatform.core.schema.ScalarArgNode
 import com.oscplatform.core.schema.ScalarRole
 import com.oscplatform.core.schema.loader.SchemaLoader
 import com.oscplatform.core.transport.OscTarget
+import com.oscplatform.core.transport.OscTransport
 import com.oscplatform.transport.udp.UdpOscTransport
 import java.io.BufferedInputStream
 import java.io.InputStream
@@ -34,16 +35,23 @@ class McpAdapter(
 ) {
     private val schemaLoader: SchemaLoader = SchemaLoader()
 
-    suspend fun execute(args: List<String>): Int {
+    suspend fun execute(args: List<String>): Int =
+        execute(args, System.`in`, System.out, UdpOscTransport(bindHost = "0.0.0.0", bindPort = 0))
+
+    internal suspend fun execute(
+        args: List<String>,
+        input: InputStream,
+        output: OutputStream,
+        transport: OscTransport,
+    ): Int {
         val parsed = parseArgs(args)
         val schemaPath = resolveSchemaPath(parsed.schemaPath)
         val schema = schemaLoader.load(schemaPath)
 
-        val transport = UdpOscTransport(bindHost = "0.0.0.0", bindPort = 0)
         val runtime = OscRuntime(schema = schema, transport = transport)
 
         val toolByName = schema.messages.associateBy { OscNaming.mcpToolName(it.path) }
-        val protocol = McpStdioProtocol(input = System.`in`, output = System.out)
+        val protocol = McpStdioProtocol(input = input, output = output)
         val server = OscMcpServer(
             protocol = protocol,
             runtime = runtime,
