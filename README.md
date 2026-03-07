@@ -296,6 +296,29 @@ gradle build --no-daemon
 gradle :osc-cli:run --args='help'
 ```
 
+## テストコマンド
+
+```bash
+./gradlew :osc-core:test
+./gradlew :osc-adapter-cli:test
+./gradlew :osc-adapter-mcp:test
+./gradlew build --no-daemon
+```
+
+テスト対象の要点:
+
+- `osc-core`
+  - `OscArgNode` バリデーション
+  - YAMLローダ
+  - DSL
+  - Runtimeのstructured args処理
+- `osc-adapter-cli`
+  - 動的JSON引数パーサ
+  - CLIコマンド分岐
+- `osc-adapter-mcp`
+  - structured `inputSchema` 生成
+  - JSON値変換
+
 ローカル検証例:
 
 ```bash
@@ -323,4 +346,4 @@ osc-platform/
 - Bundle運用機能の強化 (timetag戦略)
 - REST adapter
 - Web UI adapter
-- テスト拡充 (codec/runtime/adapter)
+- 統合テスト拡充 (MCP stdio `tools/call` / CLI `send` / codec境界ケース)

@@ -1,8 +1,5 @@
 package com.oscplatform.adapter.cli
 
-import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.ObjectMapper
-import com.fasterxml.jackson.module.kotlin.KotlinModule
 import com.oscplatform.core.runtime.OscRuntime
 import com.oscplatform.core.runtime.OscRuntimeEvent
 import com.oscplatform.core.schema.loader.SchemaLoader
@@ -25,7 +22,6 @@ class CliAdapter(
     private val err: PrintStream = System.err,
 ) {
     private val schemaLoader: SchemaLoader = SchemaLoader()
-    private val mapper = ObjectMapper().registerModule(KotlinModule.Builder().build())
 
     suspend fun execute(args: List<String>): Int {
         if (args.isEmpty()) {
@@ -252,34 +248,7 @@ class CliAdapter(
     }
 
     private fun parseDynamicValue(raw: String): Any? {
-        val trimmed = raw.trim()
-        if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
-            val node = try {
-                mapper.readTree(trimmed)
-            } catch (ex: Exception) {
-                throw IllegalArgumentException("Invalid JSON argument value: $raw")
-            }
-            return jsonNodeToValue(node)
-        }
-        return raw
-    }
-
-    private fun jsonNodeToValue(node: JsonNode): Any? {
-        return when {
-            node.isTextual -> node.asText()
-            node.isInt -> node.intValue()
-            node.isLong -> node.longValue()
-            node.isFloat || node.isDouble || node.isBigDecimal -> node.doubleValue()
-            node.isBoolean -> node.booleanValue()
-            node.isArray -> node.map { child -> jsonNodeToValue(child) }
-            node.isObject -> linkedMapOf<String, Any?>().also { map ->
-                node.fields().forEach { (key, value) ->
-                    map[key] = jsonNodeToValue(value)
-                }
-            }
-            node.isNull -> null
-            else -> node.toString()
-        }
+        return CliDynamicValueParser.parse(raw)
     }
 
     private fun resolveSchemaPath(explicitPath: String?): Path {

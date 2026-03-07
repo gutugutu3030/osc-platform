@@ -273,94 +273,7 @@ private class OscMcpServer(
     }
 
     private fun toInputSchema(spec: OscMessageSpec): ObjectNode {
-        val properties = mapper.createObjectNode()
-        val required = mapper.createArrayNode()
-        val autoDerivableLengthFields = spec.args
-            .mapNotNull { node ->
-                if (node is ArrayArgNode) {
-                    when (val length = node.length) {
-                        is LengthSpec.FromField -> length.fieldName
-                        is LengthSpec.Fixed -> null
-                    }
-                } else {
-                    null
-                }
-            }
-            .toSet()
-
-        spec.args.forEach { arg ->
-            properties.set<ObjectNode>(arg.name, toJsonSchemaForArg(arg))
-
-            val isOptionalDerivedLength = arg is ScalarArgNode &&
-                arg.role == ScalarRole.LENGTH &&
-                autoDerivableLengthFields.contains(arg.name)
-            if (!isOptionalDerivedLength) {
-                required.add(arg.name)
-            }
-        }
-
-        return mapper.createObjectNode().apply {
-            put("type", "object")
-            set<ObjectNode>("properties", properties)
-            set<ArrayNode>("required", required)
-            put("additionalProperties", false)
-        }
-    }
-
-    private fun toJsonSchemaForArg(arg: OscArgNode): ObjectNode {
-        return when (arg) {
-            is ScalarArgNode -> jsonScalarSchema(arg.type).apply {
-                if (arg.role == ScalarRole.LENGTH) {
-                    put("description", "length field")
-                    put("minimum", 0)
-                }
-            }
-
-            is ArrayArgNode -> mapper.createObjectNode().apply {
-                put("type", "array")
-                set<ObjectNode>("items", toJsonSchemaForArrayItem(arg.item))
-                when (val length = arg.length) {
-                    is LengthSpec.Fixed -> {
-                        put("minItems", length.size)
-                        put("maxItems", length.size)
-                    }
-
-                    is LengthSpec.FromField -> {
-                        put("description", "length is controlled by '${length.fieldName}'")
-                        put("x-osc-lengthFrom", length.fieldName)
-                    }
-                }
-            }
-        }
-    }
-
-    private fun toJsonSchemaForArrayItem(item: ArrayItemSpec): ObjectNode {
-        return when (item) {
-            is ArrayItemSpec.ScalarItem -> jsonScalarSchema(item.type)
-            is ArrayItemSpec.TupleItem -> {
-                val properties = mapper.createObjectNode()
-                val required = mapper.createArrayNode()
-                item.fields.forEach { field ->
-                    properties.set<ObjectNode>(field.name, jsonScalarSchema(field.type))
-                    required.add(field.name)
-                }
-                mapper.createObjectNode().apply {
-                    put("type", "object")
-                    set<ObjectNode>("properties", properties)
-                    set<ArrayNode>("required", required)
-                    put("additionalProperties", false)
-                }
-            }
-        }
-    }
-
-    private fun jsonScalarSchema(type: OscType): ObjectNode {
-        val typeString = when (type) {
-            OscType.INT -> "integer"
-            OscType.FLOAT -> "number"
-            OscType.STRING -> "string"
-        }
-        return mapper.createObjectNode().apply { put("type", typeString) }
+        return McpSchemaJsonSupport.toInputSchema(mapper = mapper, spec = spec)
     }
 
     private fun resultResponse(id: JsonNode, result: ObjectNode): ObjectNode {
@@ -383,6 +296,103 @@ private class OscMcpServer(
     }
 
     private fun jsonNodeToValue(node: JsonNode): Any? {
+        return McpSchemaJsonSupport.jsonNodeToValue(node)
+    }
+}
+
+internal object McpSchemaJsonSupport {
+    fun toInputSchema(mapper: ObjectMapper, spec: OscMessageSpec): ObjectNode {
+        val properties = mapper.createObjectNode()
+        val required = mapper.createArrayNode()
+        val autoDerivableLengthFields = spec.args
+            .mapNotNull { node ->
+                if (node is ArrayArgNode) {
+                    when (val length = node.length) {
+                        is LengthSpec.FromField -> length.fieldName
+                        is LengthSpec.Fixed -> null
+                    }
+                } else {
+                    null
+                }
+            }
+            .toSet()
+
+        spec.args.forEach { arg ->
+            properties.set<ObjectNode>(arg.name, toJsonSchemaForArg(mapper = mapper, arg = arg))
+
+            val isOptionalDerivedLength = arg is ScalarArgNode &&
+                arg.role == ScalarRole.LENGTH &&
+                autoDerivableLengthFields.contains(arg.name)
+            if (!isOptionalDerivedLength) {
+                required.add(arg.name)
+            }
+        }
+
+        return mapper.createObjectNode().apply {
+            put("type", "object")
+            set<ObjectNode>("properties", properties)
+            set<ArrayNode>("required", required)
+            put("additionalProperties", false)
+        }
+    }
+
+    private fun toJsonSchemaForArg(mapper: ObjectMapper, arg: OscArgNode): ObjectNode {
+        return when (arg) {
+            is ScalarArgNode -> jsonScalarSchema(mapper = mapper, type = arg.type).apply {
+                if (arg.role == ScalarRole.LENGTH) {
+                    put("description", "length field")
+                    put("minimum", 0)
+                }
+            }
+
+            is ArrayArgNode -> mapper.createObjectNode().apply {
+                put("type", "array")
+                set<ObjectNode>("items", toJsonSchemaForArrayItem(mapper = mapper, item = arg.item))
+                when (val length = arg.length) {
+                    is LengthSpec.Fixed -> {
+                        put("minItems", length.size)
+                        put("maxItems", length.size)
+                    }
+
+                    is LengthSpec.FromField -> {
+                        put("description", "length is controlled by '${length.fieldName}'")
+                        put("x-osc-lengthFrom", length.fieldName)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun toJsonSchemaForArrayItem(mapper: ObjectMapper, item: ArrayItemSpec): ObjectNode {
+        return when (item) {
+            is ArrayItemSpec.ScalarItem -> jsonScalarSchema(mapper = mapper, type = item.type)
+            is ArrayItemSpec.TupleItem -> {
+                val properties = mapper.createObjectNode()
+                val required = mapper.createArrayNode()
+                item.fields.forEach { field ->
+                    properties.set<ObjectNode>(field.name, jsonScalarSchema(mapper = mapper, type = field.type))
+                    required.add(field.name)
+                }
+                mapper.createObjectNode().apply {
+                    put("type", "object")
+                    set<ObjectNode>("properties", properties)
+                    set<ArrayNode>("required", required)
+                    put("additionalProperties", false)
+                }
+            }
+        }
+    }
+
+    private fun jsonScalarSchema(mapper: ObjectMapper, type: OscType): ObjectNode {
+        val typeString = when (type) {
+            OscType.INT -> "integer"
+            OscType.FLOAT -> "number"
+            OscType.STRING -> "string"
+        }
+        return mapper.createObjectNode().apply { put("type", typeString) }
+    }
+
+    fun jsonNodeToValue(node: JsonNode): Any? {
         return when {
             node.isTextual -> node.asText()
             node.isInt -> node.intValue()
