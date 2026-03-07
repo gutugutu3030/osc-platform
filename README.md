@@ -164,13 +164,17 @@ messages:
 
 ## スキーマ探索ルール (`--schema` 未指定時)
 
-`run` / `send` / `mcp` すべて同じルールです。
+`run` / `send` / `doc` / `mcp` すべて同じルールです。
 
 1. カレントディレクトリで `schema.kts` を探す
 2. なければ `schema.yaml` を探す
 3. なければ `schema.yml` を探す
 4. なければ `schema*.(kts|yaml|yml)` の先頭を使用
 5. それでも見つからなければエラー
+
+補足:
+
+- `schema.kts` と `schema.yaml` (または `schema.yml`) が同時に存在する場合は warning を出し、`schema.kts` を優先
 
 ## クイックスタート
 
@@ -237,6 +241,37 @@ gradle build :osc-cli:installDist --no-daemon
   - `--port` 未指定: エラー
 - `--arg` の値が `{...}` / `[...]` の場合はJSONとして解釈
   - array/tuple 引数は JSON 形式で渡す
+
+### 3) スキーマ仕様書 (HTML / Markdown) 生成
+
+人間向けの HTML 仕様書を生成できます。
+
+```bash
+./osc-cli/build/install/osc-cli/bin/osc-cli doc --schema schema.kts --out build/docs/osc-schema/index.html
+```
+
+Markdown 出力:
+
+```bash
+./osc-cli/build/install/osc-cli/bin/osc-cli doc --schema schema.kts --format markdown --out build/docs/osc-schema/index.md
+```
+
+`--out` にディレクトリを指定した場合は `index.html` を生成します。
+
+```bash
+./osc-cli/build/install/osc-cli/bin/osc-cli doc --schema schema.yaml --out docs/spec
+```
+
+`--format markdown` かつ `--out` がディレクトリの場合は `index.md` を生成します。
+
+オプション:
+
+- `--schema <path>`
+- `--out <path>` (default: `build/docs/osc-schema/index.html` / `--format markdown` 時は `build/docs/osc-schema/index.md`)
+- `--format <html|markdown>` (default: `html`)
+- `--title <text>`
+
+出力ファイルは静的ファイルなので、公開先は任意です（ローカル閲覧、社内サーバ、GitHub Pages など）。
 
 ## MCP Adapter 使い方
 

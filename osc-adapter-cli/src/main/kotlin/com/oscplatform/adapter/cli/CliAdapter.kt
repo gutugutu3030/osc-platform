@@ -7,6 +7,8 @@ import com.oscplatform.core.schema.loader.SchemaPathResolver
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.transport.udp.UdpOscTransport
 import java.io.PrintStream
+import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.nio.file.Path
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -30,6 +32,7 @@ class CliAdapter(
     return when (args.first()) {
       "run" -> runServer(args.drop(1))
       "send" -> sendMessage(args.drop(1))
+      "doc" -> generateDoc(args.drop(1))
       "help",
       "-h",
       "--help" -> {
@@ -109,6 +112,36 @@ class CliAdapter(
     out.println(
         "sent ${parsed.messageRef} -> ${parsed.host}:${parsed.port} args=${parsed.arguments}",
     )
+    return 0
+  }
+
+  private fun generateDoc(args: List<String>): Int {
+    val parsed = parseDocCommand(args)
+    val schemaPath = resolveSchemaPath(parsed.schemaPath)
+    val schema = schemaLoader.load(schemaPath)
+    val format = resolveDocFormat(parsed.format, parsed.outputPath)
+    val outputPath = resolveDocOutputPath(parsed.outputPath, format)
+    val docContent =
+        when (format) {
+          DocFormat.HTML ->
+              SchemaHtmlDocRenderer.render(
+                  schema = schema,
+                  schemaPath = schemaPath,
+                  title = parsed.title,
+              )
+          DocFormat.MARKDOWN ->
+              SchemaMarkdownDocRenderer.render(
+                  schema = schema,
+                  schemaPath = schemaPath,
+                  title = parsed.title,
+              )
+        }
+
+    val parent = outputPath.parent ?: error("Invalid --out path: $outputPath")
+    Files.createDirectories(parent)
+    Files.writeString(outputPath, docContent, StandardCharsets.UTF_8)
+
+    out.println("generated schema docs: $outputPath")
     return 0
   }
 
@@ -231,6 +264,119 @@ class CliAdapter(
     )
   }
 
+  private fun parseDocCommand(args: List<String>): DocConfig {
+    var schemaPath: String? = null
+    var outputPath: String? = null
+    var title: String? = null
+    var format: DocFormat? = null
+
+    var index = 0
+    while (index < args.size) {
+      val token = args[index]
+      when {
+        token == "--schema" -> {
+          schemaPath = args.valueAfter(index, "--schema")
+          index += 2
+        }
+
+        token.startsWith("--schema=") -> {
+          schemaPath = token.substringAfter('=')
+          index += 1
+        }
+
+        token == "--out" -> {
+          outputPath = args.valueAfter(index, "--out")
+          index += 2
+        }
+
+        token.startsWith("--out=") -> {
+          outputPath = token.substringAfter('=')
+          index += 1
+        }
+
+        token == "--title" -> {
+          title = args.valueAfter(index, "--title")
+          index += 2
+        }
+
+        token.startsWith("--title=") -> {
+          title = token.substringAfter('=')
+          index += 1
+        }
+
+        token == "--format" -> {
+          format = parseDocFormat(args.valueAfter(index, "--format"))
+          index += 2
+        }
+
+        token.startsWith("--format=") -> {
+          format = parseDocFormat(token.substringAfter('='))
+          index += 1
+        }
+
+        token.startsWith("--") -> error("Unknown option for doc: $token")
+        schemaPath == null -> {
+          schemaPath = token
+          index += 1
+        }
+
+        else -> error("Unexpected token in doc command: $token")
+      }
+    }
+
+    return DocConfig(
+        schemaPath = schemaPath, outputPath = outputPath, title = title, format = format)
+  }
+
+  private fun parseDocFormat(raw: String): DocFormat {
+    return when (raw.trim().lowercase()) {
+      "html" -> DocFormat.HTML
+      "markdown",
+      "md" -> DocFormat.MARKDOWN
+      else -> error("Unsupported --format: $raw (supported: html, markdown)")
+    }
+  }
+
+  private fun resolveDocFormat(explicit: DocFormat?, outputPath: String?): DocFormat {
+    if (explicit != null) {
+      return explicit
+    }
+    return detectFormatFromOutputPath(outputPath) ?: DocFormat.HTML
+  }
+
+  private fun resolveDocOutputPath(raw: String?, format: DocFormat): Path {
+    val defaultFileName = if (format == DocFormat.HTML) "index.html" else "index.md"
+
+    if (raw.isNullOrBlank()) {
+      return Path.of("build", "docs", "osc-schema", defaultFileName).toAbsolutePath().normalize()
+    }
+
+    val normalized = Path.of(raw).toAbsolutePath().normalize()
+    val inferred = detectFormatFromOutputPath(normalized.toString())
+    if (inferred != null && inferred != format) {
+      error("Output extension and --format mismatch: $normalized")
+    }
+
+    return if (inferred != null) {
+      normalized
+    } else {
+      normalized.resolve(defaultFileName)
+    }
+  }
+
+  private fun detectFormatFromOutputPath(raw: String?): DocFormat? {
+    if (raw.isNullOrBlank()) {
+      return null
+    }
+
+    val lower = Path.of(raw).fileName.toString().lowercase()
+    return when {
+      lower.endsWith(".html") || lower.endsWith(".htm") -> DocFormat.HTML
+      lower.endsWith(".md") || lower.endsWith(".markdown") -> DocFormat.MARKDOWN
+      else -> null
+    }
+  }
+
   private fun parseDynamicArg(args: List<String>, index: Int): Triple<String, Any?, Int> {
     val token = args[index]
     if (token.contains('=')) {
@@ -251,13 +397,15 @@ class CliAdapter(
   }
 
   private fun resolveSchemaPath(explicitPath: String?): Path =
-      SchemaPathResolver.resolve(explicitPath)
+      SchemaPathResolver.resolve(
+          explicitPath, warn = { message -> err.println("warning: $message") })
 
   private fun printUsage() {
     out.println(
         """
             osc run [schemaPath] [--schema path] [--host 0.0.0.0] [--port 9000]
             osc send <messageRef> [--schema path] --host <targetHost> --port <targetPort> --arg value
+            osc doc [schemaPath] [--schema path] [--out build/docs/osc-schema/index.html] [--format html|markdown] [--title "OSC Schema"]
 
             messageRef accepts schema message name (e.g. light.color) or OSC path (e.g. /light/color).
         """
@@ -278,6 +426,18 @@ private data class SendConfig(
     val port: Int,
     val arguments: Map<String, Any?>,
 )
+
+private data class DocConfig(
+    val schemaPath: String?,
+    val outputPath: String?,
+    val title: String?,
+    val format: DocFormat?,
+)
+
+private enum class DocFormat {
+  HTML,
+  MARKDOWN,
+}
 
 private fun List<String>.valueAfter(index: Int, option: String): String {
   require(index + 1 < size) { "$option requires a value" }

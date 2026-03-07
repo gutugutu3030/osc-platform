@@ -37,6 +37,7 @@ private fun printTopLevelUsage() {
       """
         osc run [schemaPath] [--schema path] [--host 0.0.0.0] [--port 9000]
         osc send <messageRef> [--schema path] --host <targetHost> --port <targetPort> --arg value
+        osc doc [schemaPath] [--schema path] [--out build/docs/osc-schema/index.html] [--format html|markdown] [--title "OSC Schema"]
         osc mcp [schemaPath] [--schema path] --host <targetHost> --port <targetPort>
         """
           .trimIndent(),

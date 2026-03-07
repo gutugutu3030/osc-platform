@@ -14,20 +14,30 @@ import kotlin.io.path.isRegularFile
  * 3. カレントディレクトリ内の `schema` で始まる `.kts/.yaml/.yml` ファイルを辞書順で最初に使用する。
  */
 object SchemaPathResolver {
-  fun resolve(explicitPath: String?): Path {
+  fun resolve(
+      explicitPath: String?,
+      warn: ((String) -> Unit)? = null,
+      cwd: Path = Path.of("").toAbsolutePath().normalize(),
+  ): Path {
     if (!explicitPath.isNullOrBlank()) {
       val resolved = Path.of(explicitPath).toAbsolutePath().normalize()
       require(resolved.exists() && resolved.isRegularFile()) { "Schema not found: $resolved" }
       return resolved
     }
 
-    val cwd = Path.of("").toAbsolutePath().normalize()
     val priority = listOf("schema.kts", "schema.yaml", "schema.yml")
-    priority.forEach { fileName ->
-      val candidate = cwd.resolve(fileName)
-      if (candidate.exists() && candidate.isRegularFile()) {
-        return candidate
+    val existingPriorityCandidates =
+        priority
+            .map { fileName -> cwd.resolve(fileName) }
+            .filter { it.exists() && it.isRegularFile() }
+    if (existingPriorityCandidates.isNotEmpty()) {
+      if (existingPriorityCandidates.size >= 2) {
+        val found =
+            existingPriorityCandidates.joinToString(", ") { path -> path.fileName.toString() }
+        warn?.invoke(
+            "Multiple schema files found ($found). Using ${existingPriorityCandidates.first().fileName}")
       }
+      return existingPriorityCandidates.first()
     }
 
     Files.list(cwd).use { stream ->

@@ -138,7 +138,8 @@ class McpAdapter(
   }
 
   private fun resolveSchemaPath(explicitPath: String?): Path =
-      SchemaPathResolver.resolve(explicitPath)
+      SchemaPathResolver.resolve(
+          explicitPath, warn = { message -> err.println("warning: $message") })
 }
 
 private data class McpConfig(

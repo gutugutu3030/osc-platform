@@ -36,6 +36,7 @@ class CliAdapterExecuteTest {
 
     assertEquals(0, exitCode)
     assertTrue(outBuffer.toString().contains("osc run"))
+    assertTrue(outBuffer.toString().contains("osc doc"))
     assertEquals("", errBuffer.toString())
   }
 
