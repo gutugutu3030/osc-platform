@@ -1,8 +1,20 @@
 oscSchema {
     message("/light/color") {
         description("set RGB color")
-        arg("r", INT)
-        arg("g", INT)
-        arg("b", INT)
+        scalar("r", INT)
+        scalar("g", INT)
+        scalar("b", INT)
+    }
+
+    message("/mesh/points") {
+        description("set xyz points")
+        scalar("pointCount", INT, role = LENGTH)
+        array("points", lengthFrom = "pointCount") {
+            tuple {
+                field("x", INT)
+                field("y", INT)
+                field("z", FLOAT)
+            }
+        }
     }
 }

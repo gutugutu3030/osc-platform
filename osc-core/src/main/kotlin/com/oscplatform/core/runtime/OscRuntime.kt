@@ -1,8 +1,14 @@
 package com.oscplatform.core.runtime
 
+import com.oscplatform.core.schema.ArrayArgNode
+import com.oscplatform.core.schema.ArrayItemSpec
+import com.oscplatform.core.schema.LengthSpec
+import com.oscplatform.core.schema.OscArgNode
 import com.oscplatform.core.schema.OscMessageSpec
 import com.oscplatform.core.schema.OscSchema
 import com.oscplatform.core.schema.OscType
+import com.oscplatform.core.schema.ScalarArgNode
+import com.oscplatform.core.schema.ScalarRole
 import com.oscplatform.core.transport.OscBundlePacket
 import com.oscplatform.core.transport.OscMessagePacket
 import com.oscplatform.core.transport.OscPacket
@@ -82,13 +88,7 @@ class OscRuntime(
             "Unknown args for '${spec.name}': ${unknownArgs.joinToString()}"
         }
 
-        val orderedArgs = spec.args.map { arg ->
-            val raw = rawArgs[arg.name]
-            if (raw == null) {
-                throw IllegalArgumentException("Missing required arg '${arg.name}' for '${spec.name}'")
-            }
-            convertToType(raw, arg.type)
-        }
+        val orderedArgs = flattenArgs(spec = spec, rawArgs = rawArgs)
 
         transport.send(
             packet = OscMessagePacket(address = spec.path, arguments = orderedArgs),
@@ -110,29 +110,16 @@ class OscRuntime(
             return
         }
 
-        if (packet.arguments.size != spec.args.size) {
+        val namedArgs = try {
+            unflattenArgs(spec = spec, wireArgs = packet.arguments)
+        } catch (ex: IllegalArgumentException) {
             _events.emit(
                 OscRuntimeEvent.ValidationError(
-                    "Invalid arg count for '${spec.path}': expected ${spec.args.size}, got ${packet.arguments.size}",
+                    ex.message ?: "Invalid OSC payload",
                     spec.path,
                 ),
             )
             return
-        }
-
-        val namedArgs = LinkedHashMap<String, Any?>()
-        for ((index, argSpec) in spec.args.withIndex()) {
-            val rawValue = packet.arguments[index]
-            if (!isTypeCompatible(rawValue, argSpec.type)) {
-                _events.emit(
-                    OscRuntimeEvent.ValidationError(
-                        "Invalid type for '${argSpec.name}' in '${spec.path}': expected ${argSpec.type}, got ${rawValue?.let { it::class.simpleName } ?: "null"}",
-                        spec.path,
-                    ),
-                )
-                return
-            }
-            namedArgs[argSpec.name] = rawValue
         }
 
         val event = OscRuntimeEvent.Received(spec = spec, packet = packet, namedArgs = namedArgs)
@@ -142,6 +129,247 @@ class OscRuntime(
                 handler(event)
             }
         }
+    }
+
+    private fun flattenArgs(spec: OscMessageSpec, rawArgs: Map<String, Any?>): List<Any?> {
+        val flattened = mutableListOf<Any?>()
+
+        val lengthContext = mutableMapOf<String, Int>()
+        val derivedLengths = deriveLengthsFromArrayValues(spec = spec, rawArgs = rawArgs)
+
+        for (argNode in spec.args) {
+            when (argNode) {
+                is ScalarArgNode -> {
+                    val raw = rawArgs[argNode.name] ?: when {
+                        argNode.role == ScalarRole.LENGTH && derivedLengths.containsKey(argNode.name) -> derivedLengths.getValue(argNode.name)
+                        else -> throw IllegalArgumentException(
+                            "Missing required arg '${argNode.name}' for '${spec.name}'",
+                        )
+                    }
+
+                    val converted = convertToType(raw = raw, type = argNode.type)
+                    if (argNode.role == ScalarRole.LENGTH) {
+                        val lengthValue = converted as Int
+                        require(lengthValue >= 0) {
+                            "Length arg '${argNode.name}' must be >= 0 for '${spec.name}'"
+                        }
+                        lengthContext[argNode.name] = lengthValue
+                    }
+                    flattened += converted
+                }
+
+                is ArrayArgNode -> {
+                    val raw = rawArgs[argNode.name]
+                        ?: throw IllegalArgumentException("Missing required arg '${argNode.name}' for '${spec.name}'")
+                    val expectedLength = resolveExpectedLengthForSend(
+                        argNode = argNode,
+                        lengthContext = lengthContext,
+                        spec = spec,
+                    )
+                    flattened.addAll(
+                        flattenArrayValue(
+                            argNode = argNode,
+                            rawValue = raw,
+                            expectedLength = expectedLength,
+                            spec = spec,
+                        ),
+                    )
+                }
+            }
+        }
+
+        return flattened
+    }
+
+    private fun deriveLengthsFromArrayValues(
+        spec: OscMessageSpec,
+        rawArgs: Map<String, Any?>,
+    ): Map<String, Int> {
+        val derivedLengths = mutableMapOf<String, Int>()
+
+        spec.args.forEach { argNode ->
+            if (argNode is ArrayArgNode && argNode.length is LengthSpec.FromField) {
+                val fieldName = argNode.length.fieldName
+                val rawValue = rawArgs[argNode.name] ?: return@forEach
+                val count = asListLike(rawValue, argNode.name, spec.name).size
+                val existing = derivedLengths[fieldName]
+                if (existing != null && existing != count) {
+                    throw IllegalArgumentException(
+                        "Conflicting derived length for '$fieldName' in '${spec.name}': $existing vs $count",
+                    )
+                }
+                derivedLengths[fieldName] = count
+            }
+        }
+
+        return derivedLengths
+    }
+
+    private fun resolveExpectedLengthForSend(
+        argNode: ArrayArgNode,
+        lengthContext: Map<String, Int>,
+        spec: OscMessageSpec,
+    ): Int {
+        return when (val length = argNode.length) {
+            is LengthSpec.Fixed -> length.size
+            is LengthSpec.FromField -> lengthContext[length.fieldName]
+                ?: throw IllegalArgumentException(
+                    "Length source '${length.fieldName}' must be resolved before '${argNode.name}' in '${spec.name}'",
+                )
+        }
+    }
+
+    private fun flattenArrayValue(
+        argNode: ArrayArgNode,
+        rawValue: Any,
+        expectedLength: Int,
+        spec: OscMessageSpec,
+    ): List<Any?> {
+        val list = asListLike(rawValue, argNode.name, spec.name)
+        require(list.size == expectedLength) {
+            "Invalid array size for '${argNode.name}' in '${spec.name}': expected $expectedLength, got ${list.size}"
+        }
+
+        val flattened = mutableListOf<Any?>()
+        when (val item = argNode.item) {
+            is ArrayItemSpec.ScalarItem -> {
+                list.forEach { element ->
+                    require(element != null) {
+                        "Null array element is not allowed for '${argNode.name}' in '${spec.name}'"
+                    }
+                    flattened += convertToType(raw = element, type = item.type)
+                }
+            }
+
+            is ArrayItemSpec.TupleItem -> {
+                list.forEachIndexed { index, element ->
+                    val tupleMap = asMapLike(
+                        value = element,
+                        fieldName = "${argNode.name}[$index]",
+                        specName = spec.name,
+                    )
+                    val unknownKeys = tupleMap.keys - item.fields.map { it.name }.toSet()
+                    require(unknownKeys.isEmpty()) {
+                        "Unknown tuple fields for '${argNode.name}[$index]' in '${spec.name}': ${unknownKeys.joinToString()}"
+                    }
+
+                    item.fields.forEach { field ->
+                        val rawField = tupleMap[field.name]
+                            ?: throw IllegalArgumentException(
+                                "Missing tuple field '${field.name}' in '${argNode.name}[$index]' for '${spec.name}'",
+                            )
+                        flattened += convertToType(raw = rawField, type = field.type)
+                    }
+                }
+            }
+        }
+
+        return flattened
+    }
+
+    private fun unflattenArgs(spec: OscMessageSpec, wireArgs: List<Any?>): Map<String, Any?> {
+        val namedArgs = LinkedHashMap<String, Any?>()
+        val lengthContext = mutableMapOf<String, Int>()
+        var cursor = 0
+
+        fun consumeScalar(type: OscType, contextName: String): Any {
+            if (cursor >= wireArgs.size) {
+                throw IllegalArgumentException("Missing value for '$contextName' in '${spec.path}'")
+            }
+            val value = wireArgs[cursor]
+            cursor += 1
+            if (!isTypeCompatible(value, type)) {
+                throw IllegalArgumentException(
+                    "Invalid type for '$contextName' in '${spec.path}': expected $type, got ${value?.let { it::class.simpleName } ?: "null"}",
+                )
+            }
+            return value!!
+        }
+
+        spec.args.forEach { argNode ->
+            when (argNode) {
+                is ScalarArgNode -> {
+                    val scalar = consumeScalar(type = argNode.type, contextName = argNode.name)
+                    namedArgs[argNode.name] = scalar
+                    if (argNode.role == ScalarRole.LENGTH) {
+                        val length = scalar as Int
+                        require(length >= 0) {
+                            "Length arg '${argNode.name}' must be >= 0 in '${spec.path}'"
+                        }
+                        lengthContext[argNode.name] = length
+                    }
+                }
+
+                is ArrayArgNode -> {
+                    val itemCount = when (val length = argNode.length) {
+                        is LengthSpec.Fixed -> length.size
+                        is LengthSpec.FromField -> lengthContext[length.fieldName]
+                            ?: throw IllegalArgumentException(
+                                "Length source '${length.fieldName}' is missing before '${argNode.name}' in '${spec.path}'",
+                            )
+                    }
+
+                    val value = when (val item = argNode.item) {
+                        is ArrayItemSpec.ScalarItem -> {
+                            buildList(itemCount) {
+                                repeat(itemCount) {
+                                    add(consumeScalar(type = item.type, contextName = argNode.name))
+                                }
+                            }
+                        }
+
+                        is ArrayItemSpec.TupleItem -> {
+                            buildList(itemCount) {
+                                repeat(itemCount) { tupleIndex ->
+                                    val tuple = LinkedHashMap<String, Any?>()
+                                    item.fields.forEach { field ->
+                                        tuple[field.name] = consumeScalar(
+                                            type = field.type,
+                                            contextName = "${argNode.name}[$tupleIndex].${field.name}",
+                                        )
+                                    }
+                                    add(tuple)
+                                }
+                            }
+                        }
+                    }
+                    namedArgs[argNode.name] = value
+                }
+            }
+        }
+
+        if (cursor != wireArgs.size) {
+            throw IllegalArgumentException(
+                "Invalid arg count for '${spec.path}': expected $cursor, got ${wireArgs.size}",
+            )
+        }
+
+        return namedArgs
+    }
+
+    private fun asListLike(value: Any, fieldName: String, specName: String): List<Any?> {
+        return when (value) {
+            is List<*> -> value
+            is Array<*> -> value.toList()
+            is Iterable<*> -> value.toList()
+            else -> throw IllegalArgumentException(
+                "Arg '$fieldName' for '$specName' must be an array value",
+            )
+        }
+    }
+
+    private fun asMapLike(value: Any?, fieldName: String, specName: String): Map<String, Any?> {
+        require(value is Map<*, *>) {
+            "Arg '$fieldName' for '$specName' must be an object value"
+        }
+        val result = LinkedHashMap<String, Any?>()
+        value.forEach { (rawKey, rawValue) ->
+            require(rawKey is String) {
+                "Arg '$fieldName' for '$specName' contains non-string object key"
+            }
+            result[rawKey] = rawValue
+        }
+        return result
     }
 
     private fun convertToType(raw: Any, type: OscType): Any {

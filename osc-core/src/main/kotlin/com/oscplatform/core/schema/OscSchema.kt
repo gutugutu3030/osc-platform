@@ -1,15 +1,10 @@
 package com.oscplatform.core.schema
 
-data class OscArgSpec(
-    val name: String,
-    val type: OscType,
-)
-
 data class OscMessageSpec(
     val path: String,
     val name: String,
     val description: String?,
-    val args: List<OscArgSpec>,
+    val args: List<OscArgNode>,
 )
 
 data class OscSchema(
@@ -26,6 +21,10 @@ data class OscSchema(
 
         val duplicateNames = messages.groupBy { it.name }.filterValues { it.size > 1 }.keys
         require(duplicateNames.isEmpty()) { "Duplicate message names: ${duplicateNames.joinToString()}" }
+
+        messages.forEach { message ->
+            OscArgNodeValidator.validate(normalizePath(message.path), message.args)
+        }
     }
 
     fun resolveMessage(ref: String): OscMessageSpec? {

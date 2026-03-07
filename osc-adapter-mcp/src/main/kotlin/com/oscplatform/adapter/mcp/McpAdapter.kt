@@ -5,10 +5,16 @@ import com.fasterxml.jackson.databind.ObjectMapper
 import com.fasterxml.jackson.databind.node.ArrayNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.module.kotlin.KotlinModule
+import com.oscplatform.core.schema.ArrayArgNode
+import com.oscplatform.core.schema.ArrayItemSpec
+import com.oscplatform.core.schema.LengthSpec
+import com.oscplatform.core.schema.OscArgNode
 import com.oscplatform.core.runtime.OscRuntime
 import com.oscplatform.core.schema.OscMessageSpec
 import com.oscplatform.core.schema.OscNaming
 import com.oscplatform.core.schema.OscType
+import com.oscplatform.core.schema.ScalarArgNode
+import com.oscplatform.core.schema.ScalarRole
 import com.oscplatform.core.schema.loader.SchemaLoader
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.transport.udp.UdpOscTransport
@@ -269,15 +275,28 @@ private class OscMcpServer(
     private fun toInputSchema(spec: OscMessageSpec): ObjectNode {
         val properties = mapper.createObjectNode()
         val required = mapper.createArrayNode()
+        val autoDerivableLengthFields = spec.args
+            .mapNotNull { node ->
+                if (node is ArrayArgNode) {
+                    when (val length = node.length) {
+                        is LengthSpec.FromField -> length.fieldName
+                        is LengthSpec.Fixed -> null
+                    }
+                } else {
+                    null
+                }
+            }
+            .toSet()
 
         spec.args.forEach { arg ->
-            val typeString = when (arg.type) {
-                OscType.INT -> "integer"
-                OscType.FLOAT -> "number"
-                OscType.STRING -> "string"
+            properties.set<ObjectNode>(arg.name, toJsonSchemaForArg(arg))
+
+            val isOptionalDerivedLength = arg is ScalarArgNode &&
+                arg.role == ScalarRole.LENGTH &&
+                autoDerivableLengthFields.contains(arg.name)
+            if (!isOptionalDerivedLength) {
+                required.add(arg.name)
             }
-            properties.set<ObjectNode>(arg.name, mapper.createObjectNode().apply { put("type", typeString) })
-            required.add(arg.name)
         }
 
         return mapper.createObjectNode().apply {
@@ -286,6 +305,62 @@ private class OscMcpServer(
             set<ArrayNode>("required", required)
             put("additionalProperties", false)
         }
+    }
+
+    private fun toJsonSchemaForArg(arg: OscArgNode): ObjectNode {
+        return when (arg) {
+            is ScalarArgNode -> jsonScalarSchema(arg.type).apply {
+                if (arg.role == ScalarRole.LENGTH) {
+                    put("description", "length field")
+                    put("minimum", 0)
+                }
+            }
+
+            is ArrayArgNode -> mapper.createObjectNode().apply {
+                put("type", "array")
+                set<ObjectNode>("items", toJsonSchemaForArrayItem(arg.item))
+                when (val length = arg.length) {
+                    is LengthSpec.Fixed -> {
+                        put("minItems", length.size)
+                        put("maxItems", length.size)
+                    }
+
+                    is LengthSpec.FromField -> {
+                        put("description", "length is controlled by '${length.fieldName}'")
+                        put("x-osc-lengthFrom", length.fieldName)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun toJsonSchemaForArrayItem(item: ArrayItemSpec): ObjectNode {
+        return when (item) {
+            is ArrayItemSpec.ScalarItem -> jsonScalarSchema(item.type)
+            is ArrayItemSpec.TupleItem -> {
+                val properties = mapper.createObjectNode()
+                val required = mapper.createArrayNode()
+                item.fields.forEach { field ->
+                    properties.set<ObjectNode>(field.name, jsonScalarSchema(field.type))
+                    required.add(field.name)
+                }
+                mapper.createObjectNode().apply {
+                    put("type", "object")
+                    set<ObjectNode>("properties", properties)
+                    set<ArrayNode>("required", required)
+                    put("additionalProperties", false)
+                }
+            }
+        }
+    }
+
+    private fun jsonScalarSchema(type: OscType): ObjectNode {
+        val typeString = when (type) {
+            OscType.INT -> "integer"
+            OscType.FLOAT -> "number"
+            OscType.STRING -> "string"
+        }
+        return mapper.createObjectNode().apply { put("type", typeString) }
     }
 
     private fun resultResponse(id: JsonNode, result: ObjectNode): ObjectNode {
@@ -314,6 +389,12 @@ private class OscMcpServer(
             node.isLong -> node.longValue()
             node.isFloat || node.isDouble || node.isBigDecimal -> node.doubleValue()
             node.isBoolean -> node.booleanValue()
+            node.isArray -> node.map { child -> jsonNodeToValue(child) }
+            node.isObject -> linkedMapOf<String, Any?>().also { map ->
+                node.fields().forEach { (key, value) ->
+                    map[key] = jsonNodeToValue(value)
+                }
+            }
             node.isNull -> null
             else -> node.toString()
         }
