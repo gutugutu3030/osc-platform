@@ -1,5 +1,6 @@
 plugins {
     kotlin("jvm") apply false
+    id("com.diffplug.spotless")
 }
 
 allprojects {
@@ -20,5 +21,16 @@ subprojects {
 
     tasks.withType<Test> {
         useJUnitPlatform()
+    }
+}
+
+spotless {
+    kotlin {
+        target("**/*.kt")
+        ktfmt("0.54")
+    }
+    kotlinGradle {
+        target("**/*.gradle.kts")
+        ktfmt("0.54")
     }
 }
