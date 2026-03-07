@@ -12,6 +12,7 @@ import com.oscplatform.core.schema.OscType
 import com.oscplatform.core.schema.ScalarArgNode
 import com.oscplatform.core.schema.ScalarRole
 import com.oscplatform.core.schema.loader.SchemaLoader
+import com.oscplatform.core.schema.loader.SchemaPathResolver
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.core.transport.OscTransport
 import com.oscplatform.transport.udp.UdpOscTransport
@@ -20,10 +21,7 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.io.PrintStream
 import java.nio.charset.StandardCharsets
-import java.nio.file.Files
 import java.nio.file.Path
-import kotlin.io.path.exists
-import kotlin.io.path.isRegularFile
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
@@ -139,44 +137,8 @@ class McpAdapter(
     return McpConfig(schemaPath = schemaPath, host = host, port = port)
   }
 
-  private fun resolveSchemaPath(explicitPath: String?): Path {
-    if (!explicitPath.isNullOrBlank()) {
-      val resolved = Path.of(explicitPath).toAbsolutePath().normalize()
-      require(resolved.exists() && resolved.isRegularFile()) { "Schema not found: $resolved" }
-      return resolved
-    }
-
-    val cwd = Path.of("").toAbsolutePath().normalize()
-    val priority = listOf("schema.kts", "schema.yaml", "schema.yml")
-    priority.forEach { fileName ->
-      val candidate = cwd.resolve(fileName)
-      if (candidate.exists() && candidate.isRegularFile()) {
-        return candidate
-      }
-    }
-
-    Files.list(cwd).use { stream ->
-      val fallback =
-          stream
-              .filter { Files.isRegularFile(it) }
-              .filter { path ->
-                val lower = path.fileName.toString().lowercase()
-                val schemaLike = lower.startsWith("schema")
-                val allowedExt =
-                    lower.endsWith(".kts") || lower.endsWith(".yaml") || lower.endsWith(".yml")
-                schemaLike && allowedExt
-              }
-              .sorted()
-              .findFirst()
-
-      if (fallback.isPresent) {
-        return fallback.get()
-      }
-    }
-
-    error(
-        "Schema not found in current directory. Use --schema <path> or add schema.kts/schema.yaml")
-  }
+  private fun resolveSchemaPath(explicitPath: String?): Path =
+      SchemaPathResolver.resolve(explicitPath)
 }
 
 private data class McpConfig(
