@@ -135,11 +135,13 @@ messages:
 
 ### 現在の対応型
 
-- `int`
-- `float`
-- `string`
-
-`bool` は次フェーズで対応予定です。
+| トークン | OSC type tag | Kotlin 型 |
+|---------|-------------|----------|
+| `int` / `integer` | `i` | `Int` |
+| `float` | `f` | `Float` |
+| `string` / `str` | `s` | `String` |
+| `bool` / `boolean` | `T` / `F` | `Boolean` |
+| `blob` / `bytes` | `b` | `ByteArray` (MCP 経由は base64 文字列) |
 
 ## 命名ルール
 
@@ -151,6 +153,7 @@ messages:
 補足:
 
 - schema に `name` を明示すれば上書き可能
+- バンドルツール名: `OscBundleSpec.name` → `bundle_<name>`
 
 ## スキーマ探索ルール (`--schema` 未指定時)
 
@@ -283,11 +286,12 @@ stdio で起動:
 
 ## 実装上の制約 (現フェーズ)
 
-- OSCプリミティブ型は `int/float/string` のみ
+- OSCプリミティブ型は `int/float/string/bool/blob` をサポート
 - 構造化引数（array/tuple）は schema で宣言し、ワイヤ上は平坦化して送受信
 - `lengthFrom` は前方の `role: length` な `int` scalar を参照する必要がある
 - Bundleは構造対応済みだが、高度な時刻同期ユースケースは未整備
 - MCPは `tools` 中心で、resources/prompts は未対応
+- BOOL の文字列変換は `true/false/1/0/yes/no` のみ受け付け、それ以外はエラー
 
 ## 開発コマンド
 
