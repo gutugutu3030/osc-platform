@@ -16,15 +16,16 @@ import kotlin.test.assertTrue
  * のどちらでも指定できる。不正な参照や重複名・引数名コリジョンは初期化時に拒否される。
  */
 class YamlSchemaLoaderBundleTest {
-    private val loader = YamlSchemaLoader()
+  private val loader = YamlSchemaLoader()
 
-    // -------------------------------------------------------------------------
-    // 正常系
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // 正常系
+  // -------------------------------------------------------------------------
 
-    @Test
-    fun loadsBundleWithMultipleMessageRefs() {
-        val yaml = """
+  @Test
+  fun loadsBundleWithMultipleMessageRefs() {
+    val yaml =
+        """
             messages:
               - path: /light/color
                 args:
@@ -48,20 +49,22 @@ class YamlSchemaLoaderBundleTest {
                 messages:
                   - ref: /light/color
                   - ref: /device/flag
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val schema = loadFromString(yaml)
+    val schema = loadFromString(yaml)
 
-        assertEquals(1, schema.bundles.size)
-        val bundle = schema.bundles.single()
-        assertEquals("set_scene", bundle.name)
-        assertEquals("ライトとフラグをアトミックに設定", bundle.description)
-        assertEquals(listOf("/light/color", "/device/flag"), bundle.messageRefs)
-    }
+    assertEquals(1, schema.bundles.size)
+    val bundle = schema.bundles.single()
+    assertEquals("set_scene", bundle.name)
+    assertEquals("ライトとフラグをアトミックに設定", bundle.description)
+    assertEquals(listOf("/light/color", "/device/flag"), bundle.messageRefs)
+  }
 
-    @Test
-    fun loadsMultipleBundles() {
-        val yaml = """
+  @Test
+  fun loadsMultipleBundles() {
+    val yaml =
+        """
             messages:
               - path: /a
                 args:
@@ -87,17 +90,19 @@ class YamlSchemaLoaderBundleTest {
                 messages:
                   - ref: /b
                   - ref: /c
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val schema = loadFromString(yaml)
-        assertEquals(2, schema.bundles.size)
-        assertEquals("ab", schema.bundles[0].name)
-        assertEquals("bc", schema.bundles[1].name)
-    }
+    val schema = loadFromString(yaml)
+    assertEquals(2, schema.bundles.size)
+    assertEquals("ab", schema.bundles[0].name)
+    assertEquals("bc", schema.bundles[1].name)
+  }
 
-    @Test
-    fun loadsBundleWithNullDescription() {
-        val yaml = """
+  @Test
+  fun loadsBundleWithNullDescription() {
+    val yaml =
+        """
             messages:
               - path: /msg
                 args:
@@ -108,15 +113,17 @@ class YamlSchemaLoaderBundleTest {
               - name: simple_bundle
                 messages:
                   - ref: /msg
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val schema = loadFromString(yaml)
-        assertNull(schema.bundles.single().description)
-    }
+    val schema = loadFromString(yaml)
+    assertNull(schema.bundles.single().description)
+  }
 
-    @Test
-    fun loadsBundleByMessageName() {
-        val yaml = """
+  @Test
+  fun loadsBundleByMessageName() {
+    val yaml =
+        """
             messages:
               - path: /light/color
                 name: set_light_color
@@ -128,51 +135,57 @@ class YamlSchemaLoaderBundleTest {
               - name: my_bundle
                 messages:
                   - ref: set_light_color
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val schema = loadFromString(yaml)
-        assertEquals(listOf("set_light_color"), schema.bundles.single().messageRefs)
-        // OscSchema バリデーションで名前参照が解決されることを確認
-        assertEquals(schema.bundles.single(), schema.findBundle("my_bundle"))
-    }
+    val schema = loadFromString(yaml)
+    assertEquals(listOf("set_light_color"), schema.bundles.single().messageRefs)
+    // OscSchema バリデーションで名前参照が解決されることを確認
+    assertEquals(schema.bundles.single(), schema.findBundle("my_bundle"))
+  }
 
-    @Test
-    fun schemaWithNoBundlesSectionHasEmptyBundles() {
-        val yaml = """
+  @Test
+  fun schemaWithNoBundlesSectionHasEmptyBundles() {
+    val yaml =
+        """
             messages:
               - path: /msg
                 args:
                   - name: v
                     kind: scalar
                     type: int
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val schema = loadFromString(yaml)
-        assertTrue(schema.bundles.isEmpty())
-    }
+    val schema = loadFromString(yaml)
+    assertTrue(schema.bundles.isEmpty())
+  }
 
-    @Test
-    fun findBundleReturnsNullForUnknownName() {
-        val yaml = """
+  @Test
+  fun findBundleReturnsNullForUnknownName() {
+    val yaml =
+        """
             messages:
               - path: /msg
                 args:
                   - name: v
                     kind: scalar
                     type: int
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val schema = loadFromString(yaml)
-        assertNull(schema.findBundle("not_there"))
-    }
+    val schema = loadFromString(yaml)
+    assertNull(schema.findBundle("not_there"))
+  }
 
-    // -------------------------------------------------------------------------
-    // 異常系
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // 異常系
+  // -------------------------------------------------------------------------
 
-    @Test
-    fun rejectsUnknownMessageRefInBundle() {
-        val yaml = """
+  @Test
+  fun rejectsUnknownMessageRefInBundle() {
+    val yaml =
+        """
             messages:
               - path: /light/color
                 args:
@@ -183,16 +196,16 @@ class YamlSchemaLoaderBundleTest {
               - name: bad_bundle
                 messages:
                   - ref: /unknown/path
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        assertFailsWith<IllegalArgumentException> {
-            loadFromString(yaml)
-        }
-    }
+    assertFailsWith<IllegalArgumentException> { loadFromString(yaml) }
+  }
 
-    @Test
-    fun rejectsDuplicateBundleNames() {
-        val yaml = """
+  @Test
+  fun rejectsDuplicateBundleNames() {
+    val yaml =
+        """
             messages:
               - path: /a
                 args:
@@ -206,16 +219,16 @@ class YamlSchemaLoaderBundleTest {
               - name: dup
                 messages:
                   - ref: /a
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        assertFailsWith<IllegalArgumentException> {
-            loadFromString(yaml)
-        }
-    }
+    assertFailsWith<IllegalArgumentException> { loadFromString(yaml) }
+  }
 
-    @Test
-    fun rejectsBundleWithArgNameCollision() {
-        val yaml = """
+  @Test
+  fun rejectsBundleWithArgNameCollision() {
+    val yaml =
+        """
             messages:
               - path: /a
                 args:
@@ -232,17 +245,17 @@ class YamlSchemaLoaderBundleTest {
                 messages:
                   - ref: /a
                   - ref: /b
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val ex = assertFailsWith<IllegalArgumentException> {
-            loadFromString(yaml)
-        }
-        assertTrue(ex.message?.contains("collision") == true || ex.message?.contains("value") == true)
-    }
+    val ex = assertFailsWith<IllegalArgumentException> { loadFromString(yaml) }
+    assertTrue(ex.message?.contains("collision") == true || ex.message?.contains("value") == true)
+  }
 
-    @Test
-    fun rejectsBundleWithNoMessages() {
-        val yaml = """
+  @Test
+  fun rejectsBundleWithNoMessages() {
+    val yaml =
+        """
             messages:
               - path: /a
                 args:
@@ -252,24 +265,23 @@ class YamlSchemaLoaderBundleTest {
             bundles:
               - name: empty_bundle
                 messages: []
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        assertFailsWith<IllegalArgumentException> {
-            loadFromString(yaml)
-        }
+    assertFailsWith<IllegalArgumentException> { loadFromString(yaml) }
+  }
+
+  // -------------------------------------------------------------------------
+  // ヘルパー
+  // -------------------------------------------------------------------------
+
+  private fun loadFromString(yaml: String): OscSchema {
+    val tmp = Files.createTempFile("bundle-test", ".yaml")
+    try {
+      tmp.toFile().writeText(yaml)
+      return loader.load(tmp)
+    } finally {
+      tmp.toFile().delete()
     }
-
-    // -------------------------------------------------------------------------
-    // ヘルパー
-    // -------------------------------------------------------------------------
-
-    private fun loadFromString(yaml: String): OscSchema {
-        val tmp = Files.createTempFile("bundle-test", ".yaml")
-        try {
-            tmp.toFile().writeText(yaml)
-            return loader.load(tmp)
-        } finally {
-            tmp.toFile().delete()
-        }
-    }
+  }
 }

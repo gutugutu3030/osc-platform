@@ -17,20 +17,20 @@ import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
 
 /**
- * YAML スキーマの構造型引数（kind: array / kind: tuple）を
- * [YamlSchemaLoader] が正しくパースすることを検証するテスト。
+ * YAML スキーマの構造型引数（kind: array / kind: tuple）を [YamlSchemaLoader] が正しくパースすることを検証するテスト。
  *
  * length / lengthFrom の排他検証も画䏯する。
  */
 class YamlSchemaLoaderStructuredArgsTest {
 
-    // -------------------------------------------------------------------------
-    // 正常系
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // 正常系
+  // -------------------------------------------------------------------------
 
-    @Test
+  @Test
   fun loadParsesStructuredArgs() {
-        val yaml = """
+    val yaml =
+        """
             messages:
               - path: /mesh/points
                 args:
@@ -50,38 +50,40 @@ class YamlSchemaLoaderStructuredArgsTest {
                           type: int
                         - name: z
                           type: float
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val path = Files.createTempFile("schema-", ".yaml")
-        try {
-            path.writeText(yaml)
-            val schema = YamlSchemaLoader().load(path)
-            val spec = assertNotNull(schema.findByPath("/mesh/points"))
+    val path = Files.createTempFile("schema-", ".yaml")
+    try {
+      path.writeText(yaml)
+      val schema = YamlSchemaLoader().load(path)
+      val spec = assertNotNull(schema.findByPath("/mesh/points"))
 
-            val count = assertIs<ScalarArgNode>(spec.args[0])
-            assertEquals("pointCount", count.name)
-            assertEquals(OscType.INT, count.type)
-            assertEquals(ScalarRole.LENGTH, count.role)
+      val count = assertIs<ScalarArgNode>(spec.args[0])
+      assertEquals("pointCount", count.name)
+      assertEquals(OscType.INT, count.type)
+      assertEquals(ScalarRole.LENGTH, count.role)
 
-            val points = assertIs<ArrayArgNode>(spec.args[1])
-            assertEquals("points", points.name)
-            assertEquals("pointCount", (points.length as LengthSpec.FromField).fieldName)
+      val points = assertIs<ArrayArgNode>(spec.args[1])
+      assertEquals("points", points.name)
+      assertEquals("pointCount", (points.length as LengthSpec.FromField).fieldName)
 
-            val tuple = assertIs<ArrayItemSpec.TupleItem>(points.item)
-            assertEquals(listOf("x", "y", "z"), tuple.fields.map { it.name })
-            assertEquals(listOf(OscType.INT, OscType.INT, OscType.FLOAT), tuple.fields.map { it.type })
-        } finally {
-            path.deleteIfExists()
-        }
+      val tuple = assertIs<ArrayItemSpec.TupleItem>(points.item)
+      assertEquals(listOf("x", "y", "z"), tuple.fields.map { it.name })
+      assertEquals(listOf(OscType.INT, OscType.INT, OscType.FLOAT), tuple.fields.map { it.type })
+    } finally {
+      path.deleteIfExists()
     }
+  }
 
-    // -------------------------------------------------------------------------
-    // 異常系
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // 異常系
+  // -------------------------------------------------------------------------
 
-    @Test
-    fun loadRejectsArrayWithBothLengthAndLengthFrom() {
-        val yaml = """
+  @Test
+  fun loadRejectsArrayWithBothLengthAndLengthFrom() {
+    val yaml =
+        """
             messages:
               - path: /mesh/points
                 args:
@@ -92,17 +94,16 @@ class YamlSchemaLoaderStructuredArgsTest {
                     items:
                       kind: scalar
                       type: int
-        """.trimIndent()
+        """
+            .trimIndent()
 
-        val path = Files.createTempFile("schema-invalid-", ".yaml")
-        try {
-            path.writeText(yaml)
-            val ex = assertFailsWith<IllegalArgumentException> {
-                YamlSchemaLoader().load(path)
-            }
-            assertTrue(ex.message?.contains("both length and lengthFrom") == true)
-        } finally {
-            path.deleteIfExists()
-        }
+    val path = Files.createTempFile("schema-invalid-", ".yaml")
+    try {
+      path.writeText(yaml)
+      val ex = assertFailsWith<IllegalArgumentException> { YamlSchemaLoader().load(path) }
+      assertTrue(ex.message?.contains("both length and lengthFrom") == true)
+    } finally {
+      path.deleteIfExists()
     }
+  }
 }

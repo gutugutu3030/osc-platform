@@ -17,48 +17,46 @@ import kotlin.test.assertTrue
  */
 class CliDynamicValueParserTest {
 
-    // -------------------------------------------------------------------------
-    // 正常系
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // 正常系
+  // -------------------------------------------------------------------------
 
-    /** 数字列は「数字」でなく Raw 文字列として返り、型変換は OscRuntime 側で行う */
-    @Test
-    fun parseReturnsRawStringWhenNotJsonLiteral() {
-        val value: Any? = CliDynamicValueParser.parse("123")
-        assertEquals("123", value)
-    }
+  /** 数字列は「数字」でなく Raw 文字列として返り、型変換は OscRuntime 側で行う */
+  @Test
+  fun parseReturnsRawStringWhenNotJsonLiteral() {
+    val value: Any? = CliDynamicValueParser.parse("123")
+    assertEquals("123", value)
+  }
 
-    /** JSON 配列およびオブジェクトが再帰的に Kotlin ネイティブ型に変換される */
-    @Test
-    fun parseConvertsJsonArrayAndObjectRecursively() {
-        val raw = """[{"x":1,"y":2,"z":3.5}, {"x":4,"y":5,"z":null}]"""
-        val parsed: Any? = CliDynamicValueParser.parse(raw)
+  /** JSON 配列およびオブジェクトが再帰的に Kotlin ネイティブ型に変換される */
+  @Test
+  fun parseConvertsJsonArrayAndObjectRecursively() {
+    val raw = """[{"x":1,"y":2,"z":3.5}, {"x":4,"y":5,"z":null}]"""
+    val parsed: Any? = CliDynamicValueParser.parse(raw)
 
-        val list = assertIs<List<*>>(parsed)
-        assertEquals(2, list.size)
+    val list = assertIs<List<*>>(parsed)
+    assertEquals(2, list.size)
 
-        val first = assertIs<Map<*, *>>(list[0])
-        assertEquals(1, first["x"])
-        assertEquals(2, first["y"])
-        assertEquals(3.5, first["z"])
+    val first = assertIs<Map<*, *>>(list[0])
+    assertEquals(1, first["x"])
+    assertEquals(2, first["y"])
+    assertEquals(3.5, first["z"])
 
-        val second = assertIs<Map<*, *>>(list[1])
-        assertEquals(4, second["x"])
-        assertEquals(5, second["y"])
-        assertNull(second["z"])
-    }
+    val second = assertIs<Map<*, *>>(list[1])
+    assertEquals(4, second["x"])
+    assertEquals(5, second["y"])
+    assertNull(second["z"])
+  }
 
-    // -------------------------------------------------------------------------
-    // 異常系
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // 異常系
+  // -------------------------------------------------------------------------
 
-    /** JSON のブラケットが不小などの不正形式は拒否される */
-    @Test
-    fun parseThrowsOnInvalidJsonLiteral() {
-        val ex = assertFailsWith<IllegalArgumentException> {
-            CliDynamicValueParser.parse("[{\"x\":1}")
-        }
+  /** JSON のブラケットが不小などの不正形式は拒否される */
+  @Test
+  fun parseThrowsOnInvalidJsonLiteral() {
+    val ex = assertFailsWith<IllegalArgumentException> { CliDynamicValueParser.parse("[{\"x\":1}") }
 
-        assertTrue(ex.message?.contains("Invalid JSON argument value") == true)
-    }
+    assertTrue(ex.message?.contains("Invalid JSON argument value") == true)
+  }
 }

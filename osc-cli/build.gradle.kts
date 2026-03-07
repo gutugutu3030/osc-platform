@@ -1,15 +1,11 @@
 val coroutinesVersion: String by project
 
-plugins {
-    application
-}
+plugins { application }
 
 dependencies {
-    implementation(project(":osc-adapter-cli"))
-    implementation(project(":osc-adapter-mcp"))
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
+  implementation(project(":osc-adapter-cli"))
+  implementation(project(":osc-adapter-mcp"))
+  implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
 }
 
-application {
-    mainClass = "com.oscplatform.cli.MainKt"
-}
+application { mainClass = "com.oscplatform.cli.MainKt" }

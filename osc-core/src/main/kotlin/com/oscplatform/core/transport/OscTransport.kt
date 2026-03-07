@@ -20,11 +20,11 @@ data class OscTarget(
 )
 
 interface OscTransport {
-    val incomingPackets: Flow<OscPacket>
+  val incomingPackets: Flow<OscPacket>
 
-    suspend fun start()
+  suspend fun start()
 
-    suspend fun stop()
+  suspend fun stop()
 
-    suspend fun send(packet: OscPacket, target: OscTarget)
+  suspend fun send(packet: OscPacket, target: OscTarget)
 }

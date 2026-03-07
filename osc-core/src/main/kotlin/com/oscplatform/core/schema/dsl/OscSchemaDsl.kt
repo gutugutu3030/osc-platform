@@ -22,136 +22,144 @@ val VALUE: ScalarRole = ScalarRole.VALUE
 val LENGTH: ScalarRole = ScalarRole.LENGTH
 
 class OscSchemaBuilder {
-    private val messages = mutableListOf<OscMessageSpec>()
-    private val bundles = mutableListOf<OscBundleSpec>()
+  private val messages = mutableListOf<OscMessageSpec>()
+  private val bundles = mutableListOf<OscBundleSpec>()
 
-    fun message(path: String, block: OscMessageBuilder.() -> Unit) {
-        val builder = OscMessageBuilder(path)
-        builder.block()
-        messages += builder.build()
-    }
+  fun message(path: String, block: OscMessageBuilder.() -> Unit) {
+    val builder = OscMessageBuilder(path)
+    builder.block()
+    messages += builder.build()
+  }
 
-    fun bundle(name: String, block: OscBundleBuilder.() -> Unit) {
-        val builder = OscBundleBuilder(name)
-        builder.block()
-        bundles += builder.build()
-    }
+  fun bundle(name: String, block: OscBundleBuilder.() -> Unit) {
+    val builder = OscBundleBuilder(name)
+    builder.block()
+    bundles += builder.build()
+  }
 
-    internal fun build(): OscSchema = OscSchema(messages = messages.toList(), bundles = bundles.toList())
+  internal fun build(): OscSchema =
+      OscSchema(messages = messages.toList(), bundles = bundles.toList())
 }
 
 class OscMessageBuilder(
     private val rawPath: String,
 ) {
-    private var explicitName: String? = null
-    private var textDescription: String? = null
-    private val args = mutableListOf<OscArgNode>()
+  private var explicitName: String? = null
+  private var textDescription: String? = null
+  private val args = mutableListOf<OscArgNode>()
 
-    fun name(value: String) {
-        explicitName = value.trim()
+  fun name(value: String) {
+    explicitName = value.trim()
+  }
+
+  fun description(value: String) {
+    textDescription = value.trim()
+  }
+
+  fun scalar(
+      name: String,
+      type: OscType,
+      role: ScalarRole = ScalarRole.VALUE,
+  ) {
+    args += ScalarArgNode(name = name.trim(), type = type, role = role)
+  }
+
+  fun arg(name: String, type: OscType) {
+    scalar(name = name, type = type)
+  }
+
+  fun array(
+      name: String,
+      length: Int? = null,
+      lengthFrom: String? = null,
+      block: ArrayItemBuilder.() -> Unit,
+  ) {
+    require(!(length != null && !lengthFrom.isNullOrBlank())) {
+      "array('$name') cannot define both length and lengthFrom"
     }
 
-    fun description(value: String) {
-        textDescription = value.trim()
-    }
-
-    fun scalar(
-        name: String,
-        type: OscType,
-        role: ScalarRole = ScalarRole.VALUE,
-    ) {
-        args += ScalarArgNode(name = name.trim(), type = type, role = role)
-    }
-
-    fun arg(name: String, type: OscType) {
-        scalar(name = name, type = type)
-    }
-
-    fun array(
-        name: String,
-        length: Int? = null,
-        lengthFrom: String? = null,
-        block: ArrayItemBuilder.() -> Unit,
-    ) {
-        require(!(length != null && !lengthFrom.isNullOrBlank())) {
-            "array('$name') cannot define both length and lengthFrom"
+    val resolvedLength =
+        when {
+          length != null -> LengthSpec.Fixed(length)
+          !lengthFrom.isNullOrBlank() -> LengthSpec.FromField(lengthFrom.trim())
+          else ->
+              throw IllegalArgumentException(
+                  "array('$name') must define either length or lengthFrom")
         }
 
-        val resolvedLength = when {
-            length != null -> LengthSpec.Fixed(length)
-            !lengthFrom.isNullOrBlank() -> LengthSpec.FromField(lengthFrom.trim())
-            else -> throw IllegalArgumentException("array('$name') must define either length or lengthFrom")
-        }
+    val item = ArrayItemBuilder().apply(block).build()
+    args += ArrayArgNode(name = name.trim(), length = resolvedLength, item = item)
+  }
 
-        val item = ArrayItemBuilder().apply(block).build()
-        args += ArrayArgNode(name = name.trim(), length = resolvedLength, item = item)
+  internal fun build(): OscMessageSpec {
+    val normalizedPath = OscSchema.normalizePath(rawPath)
+    val resolvedName =
+        explicitName?.takeIf { it.isNotBlank() } ?: OscNaming.defaultMessageName(normalizedPath)
+    val duplicateArgs = args.groupBy { it.name }.filterValues { it.size > 1 }.keys
+    require(duplicateArgs.isEmpty()) {
+      "Duplicate args for '$normalizedPath': ${duplicateArgs.joinToString()}"
     }
 
-    internal fun build(): OscMessageSpec {
-        val normalizedPath = OscSchema.normalizePath(rawPath)
-        val resolvedName = explicitName?.takeIf { it.isNotBlank() } ?: OscNaming.defaultMessageName(normalizedPath)
-        val duplicateArgs = args.groupBy { it.name }.filterValues { it.size > 1 }.keys
-        require(duplicateArgs.isEmpty()) { "Duplicate args for '$normalizedPath': ${duplicateArgs.joinToString()}" }
-
-        return OscMessageSpec(
-            path = normalizedPath,
-            name = resolvedName,
-            description = textDescription,
-            args = args.toList(),
-        )
-    }
+    return OscMessageSpec(
+        path = normalizedPath,
+        name = resolvedName,
+        description = textDescription,
+        args = args.toList(),
+    )
+  }
 }
 
 class ArrayItemBuilder {
-    private var item: ArrayItemSpec? = null
+  private var item: ArrayItemSpec? = null
 
-    fun scalar(type: OscType) {
-        require(item == null) { "Array item is already defined" }
-        item = ArrayItemSpec.ScalarItem(type)
-    }
+  fun scalar(type: OscType) {
+    require(item == null) { "Array item is already defined" }
+    item = ArrayItemSpec.ScalarItem(type)
+  }
 
-    fun tuple(block: TupleFieldBuilder.() -> Unit) {
-        require(item == null) { "Array item is already defined" }
-        val fields = TupleFieldBuilder().apply(block).build()
-        item = ArrayItemSpec.TupleItem(fields = fields)
-    }
+  fun tuple(block: TupleFieldBuilder.() -> Unit) {
+    require(item == null) { "Array item is already defined" }
+    val fields = TupleFieldBuilder().apply(block).build()
+    item = ArrayItemSpec.TupleItem(fields = fields)
+  }
 
-    internal fun build(): ArrayItemSpec {
-        return item ?: throw IllegalArgumentException("Array item definition is required")
-    }
+  internal fun build(): ArrayItemSpec {
+    return item ?: throw IllegalArgumentException("Array item definition is required")
+  }
 }
 
 class TupleFieldBuilder {
-    private val fields = mutableListOf<TupleFieldSpec>()
+  private val fields = mutableListOf<TupleFieldSpec>()
 
-    fun field(name: String, type: OscType) {
-        fields += TupleFieldSpec(name = name.trim(), type = type)
-    }
+  fun field(name: String, type: OscType) {
+    fields += TupleFieldSpec(name = name.trim(), type = type)
+  }
 
-    internal fun build(): List<TupleFieldSpec> = fields.toList()
+  internal fun build(): List<TupleFieldSpec> = fields.toList()
 }
 
 fun oscSchema(block: OscSchemaBuilder.() -> Unit): OscSchema {
-    val builder = OscSchemaBuilder()
-    builder.block()
-    return builder.build()
+  val builder = OscSchemaBuilder()
+  builder.block()
+  return builder.build()
 }
 
 class OscBundleBuilder(private val rawName: String) {
-    private var textDescription: String? = null
-    private val refs = mutableListOf<String>()
+  private var textDescription: String? = null
+  private val refs = mutableListOf<String>()
 
-    fun description(value: String) {
-        textDescription = value.trim()
-    }
+  fun description(value: String) {
+    textDescription = value.trim()
+  }
 
-    fun message(ref: String) {
-        refs += ref.trim()
-    }
+  fun message(ref: String) {
+    refs += ref.trim()
+  }
 
-    internal fun build(): OscBundleSpec = OscBundleSpec(
-        name = rawName.trim(),
-        description = textDescription,
-        messageRefs = refs.toList(),
-    )
+  internal fun build(): OscBundleSpec =
+      OscBundleSpec(
+          name = rawName.trim(),
+          description = textDescription,
+          messageRefs = refs.toList(),
+      )
 }
