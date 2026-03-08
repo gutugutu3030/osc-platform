@@ -142,13 +142,13 @@ messages:
 
 ### 現在の対応型
 
-| トークン | OSC type tag | Kotlin 型 |
-|---------|-------------|----------|
-| `int` / `integer` | `i` | `Int` |
-| `float` | `f` | `Float` |
-| `string` / `str` | `s` | `String` |
-| `bool` / `boolean` | `T` / `F` | `Boolean` |
-| `blob` / `bytes` | `b` | `ByteArray` (MCP 経由は base64 文字列) |
+| トークン               | OSC type tag | Kotlin 型                         |
+|--------------------|--------------|----------------------------------|
+| `int` / `integer`  | `i`          | `Int`                            |
+| `float`            | `f`          | `Float`                          |
+| `string` / `str`   | `s`          | `String`                         |
+| `bool` / `boolean` | `T` / `F`    | `Boolean`                        |
+| `blob` / `bytes`   | `b`          | `ByteArray` (MCP 経由は base64 文字列) |
 
 ## 命名ルール
 

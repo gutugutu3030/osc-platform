@@ -24,8 +24,8 @@ class CliAdapterExecuteTest {
   /** help コマンド: 戻り値 0, "osc run" を含む使い方を stdout に出力 */
   @Test
   fun executeHelpReturnsZeroAndPrintsUsage() {
-    val outBuffer: ByteArrayOutputStream = ByteArrayOutputStream()
-    val errBuffer: ByteArrayOutputStream = ByteArrayOutputStream()
+    val outBuffer = ByteArrayOutputStream()
+    val errBuffer = ByteArrayOutputStream()
     val adapter =
         CliAdapter(
             out = PrintStream(outBuffer),
@@ -47,8 +47,8 @@ class CliAdapterExecuteTest {
   /** 不明コマンド: 戻り値 1, "Unknown command" を stderr に出力し使い方も出力 */
   @Test
   fun executeUnknownCommandReturnsOneAndPrintsError() {
-    val outBuffer: ByteArrayOutputStream = ByteArrayOutputStream()
-    val errBuffer: ByteArrayOutputStream = ByteArrayOutputStream()
+    val outBuffer = ByteArrayOutputStream()
+    val errBuffer = ByteArrayOutputStream()
     val adapter =
         CliAdapter(
             out = PrintStream(outBuffer),
@@ -65,8 +65,8 @@ class CliAdapterExecuteTest {
   /** 引数なし: 戻り値 1, "osc send" を含む使い方を stdout に出力、stderr は空 */
   @Test
   fun executeWithoutArgsReturnsOneAndPrintsUsage() {
-    val outBuffer: ByteArrayOutputStream = ByteArrayOutputStream()
-    val errBuffer: ByteArrayOutputStream = ByteArrayOutputStream()
+    val outBuffer = ByteArrayOutputStream()
+    val errBuffer = ByteArrayOutputStream()
     val adapter =
         CliAdapter(
             out = PrintStream(outBuffer),
