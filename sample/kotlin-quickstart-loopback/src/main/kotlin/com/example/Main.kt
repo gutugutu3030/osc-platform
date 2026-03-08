@@ -27,10 +27,11 @@ fun main(): Unit = runBlocking {
   // --- トランスポート & ランタイム構築 ---
   val transport = UdpOscTransport(bindHost = "127.0.0.1", bindPort = 19000)
   val runtime = OscRuntime(schema = schema, transport = transport)
+  val lightColorSpec = schema.resolveMessage("light.color") ?: error("Missing message: light.color")
 
   // --- 受信ハンドラ登録 (suspend ではない通常関数) ---
   val received = CompletableDeferred<Unit>()
-  runtime.on("/light/color") { event: OscRuntimeEvent.Received ->
+  runtime.on(lightColorSpec) { event: OscRuntimeEvent.Received ->
     println("[Received] /light/color  namedArgs=${event.namedArgs}")
     received.complete(Unit)
   }

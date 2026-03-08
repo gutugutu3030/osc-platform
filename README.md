@@ -2,6 +2,37 @@
 
 OSC (Open Sound Control) を扱うための、スキーマ駆動開発プラットフォームです。
 
+## 破壊的変更 — v0.3.0 (Breaking Changes)
+
+### `runtime.on(String, handler)` の廃止
+
+v0.3.0 から `OscRuntime.on(String, handler)` オーバーロードは **削除** されました。  
+受信ハンドラを登録する際は `OscMessageSpec` を渡してください。
+
+**Before (v0.2.x まで — コンパイル不可)**
+
+```kotlin
+// NG: String オーバーロードは廃止済み
+runtime.on("/light/color") { event ->
+    println(event.namedArgs)
+}
+```
+
+**After (v0.3.0 以降)**
+
+```kotlin
+val lightColorSpec = schema.resolveMessage("light.color")
+    ?: error("スキーマに '/light/color' が見つかりません")
+
+runtime.on(lightColorSpec) { event ->
+    println(event.namedArgs)
+}
+```
+
+> **移行手順**: `on(path: String, ...)` の呼び出し箇所を  
+> `schema.resolveMessage("<ref>")` で `OscMessageSpec` を取得してから  
+> `on(spec, ...)` に差し替えてください。
+
 ## Presentation
 
 OSC → schema の価値と本プロジェクトのアーキテクチャを解説するスライドを公開しています。

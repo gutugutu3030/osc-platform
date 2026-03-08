@@ -340,7 +340,7 @@ class OscRuntimeStructuredArgsTest {
 
 private class FakeTransport : OscTransport {
   override val incomingPackets: MutableSharedFlow<OscPacket> =
-      MutableSharedFlow(extraBufferCapacity = 16)
+      MutableSharedFlow(replay = 1, extraBufferCapacity = 16)
   val sentMessages: MutableList<OscMessagePacket> = mutableListOf()
 
   override suspend fun start() {

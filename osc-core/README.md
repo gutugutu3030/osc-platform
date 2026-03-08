@@ -81,12 +81,17 @@ val schema = SchemaLoader().load(Paths.get("schema.kts"))
 
 `OscRuntime` は送受信・バリデーション・イベント配信を担います。
 
+> **[破壊的変更 v0.3.0]** `runtime.on(String, handler)` オーバーロードは廃止されました。  
+> 受信ハンドラ登録には `OscMessageSpec` を渡す `runtime.on(spec, handler)` を使用してください。  
+> 詳細は [ルートの README](../README.md#破壊的変更--v030-breaking-changes) を参照してください。
+
 ```kotlin
 val transport = UdpOscTransport(bindHost = "127.0.0.1", bindPort = 9000)
 val runtime = OscRuntime(schema = schema, transport = transport)
+val lightColorSpec = schema.resolveMessage("light.color") ?: error("missing schema message")
 
 // 受信ハンドラ登録
-runtime.on("/light/color") { event ->
+runtime.on(lightColorSpec) { event ->
     println("received: ${event.namedArgs}")
 }
 

@@ -276,7 +276,7 @@ private class OscMcpServer(
           "serverInfo",
           mapper.createObjectNode().apply {
             put("name", "osc-platform")
-            put("version", "0.2.0")
+            put("version", "0.3.0")
           })
     }
   }
