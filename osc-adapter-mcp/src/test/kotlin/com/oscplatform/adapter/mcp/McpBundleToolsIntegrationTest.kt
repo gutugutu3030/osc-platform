@@ -84,7 +84,7 @@ class McpBundleToolsIntegrationTest {
       val tools = result.path("tools")
       assertTrue(tools.isArray)
 
-      val toolNames = tools.toList().map { it.path("name").asText() }.toSet()
+      val toolNames = tools.toList().map { it.path("name").stringValue() ?: "" }.toSet()
       assertTrue(
           toolNames.contains("bundle_set_scene"),
           "bundle_set_scene が tools/list に含まれること: $toolNames")
@@ -113,7 +113,7 @@ class McpBundleToolsIntegrationTest {
           )
 
       val tools = responses[0].path("result").path("tools")
-      val bundleTool = tools.firstOrNull { it.path("name").asText() == "bundle_set_scene" }
+      val bundleTool = tools.firstOrNull { it.path("name").stringValue() == "bundle_set_scene" }
       assertNotNull(bundleTool, "bundle_set_scene が存在すること")
 
       // inputSchema は flat merge: r, g, b, enabled が全てトップレベルにある
@@ -123,11 +123,16 @@ class McpBundleToolsIntegrationTest {
       assertTrue(props.has("b"), "b が含まれること")
       assertTrue(props.has("enabled"), "enabled が含まれること")
 
-      assertEquals("integer", props.path("r").path("type").asText())
-      assertEquals("boolean", props.path("enabled").path("type").asText())
+      assertEquals("integer", props.path("r").path("type").stringValue())
+      assertEquals("boolean", props.path("enabled").path("type").stringValue())
 
       val required =
-          bundleTool.path("inputSchema").path("required").toList().map { it.asText() }.toSet()
+          bundleTool
+              .path("inputSchema")
+              .path("required")
+              .toList()
+              .map { it.stringValue() ?: "" }
+              .toSet()
       assertTrue(required.containsAll(setOf("r", "g", "b", "enabled")))
     } finally {
       Files.deleteIfExists(schemaFile)
@@ -152,8 +157,8 @@ class McpBundleToolsIntegrationTest {
           )
 
       val tools = responses[0].path("result").path("tools")
-      val bundleTool = tools.first { it.path("name").asText() == "bundle_set_scene" }
-      assertEquals("ライトとフラグをアトミックに設定", bundleTool.path("description").asText())
+      val bundleTool = tools.first { it.path("name").stringValue() == "bundle_set_scene" }
+      assertEquals("ライトとフラグをアトミックに設定", bundleTool.path("description").stringValue())
     } finally {
       Files.deleteIfExists(schemaFile)
     }
@@ -183,7 +188,7 @@ class McpBundleToolsIntegrationTest {
 
       assertEquals(1, responses.size)
       val response = responses[0]
-      assertEquals("2.0", response.path("jsonrpc").asText())
+      assertEquals("2.0", response.path("jsonrpc").stringValue())
       assertEquals(1, response.path("id").asInt())
       assertNull(response.get("error"), "エラーなし")
 
@@ -223,8 +228,8 @@ class McpBundleToolsIntegrationTest {
 
       val content = responses[0].path("result").path("content")
       assertTrue(content.isArray)
-      assertEquals("text", content[0].path("type").asText())
-      val text = content[0].path("text").asText()
+      assertEquals("text", content[0].path("type").stringValue())
+      val text = content[0].path("text").stringValue() ?: ""
       assertTrue(text.contains("set_scene"), "テキストにバンドル名が含まれること: $text")
     } finally {
       Files.deleteIfExists(schemaFile)

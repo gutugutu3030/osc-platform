@@ -73,7 +73,7 @@ class McpToolsCallIntegrationTest {
       val response = responses[0]
 
       // JSON-RPC フィールド
-      assertEquals("2.0", response.path("jsonrpc").asText())
+      assertEquals("2.0", response.path("jsonrpc").stringValue())
       assertEquals(1, response.path("id").asInt())
       assertNull(response.get("error"), "エラーフィールドがないこと")
 
@@ -81,9 +81,9 @@ class McpToolsCallIntegrationTest {
       val content = response.path("result").path("content")
       assertTrue(content.isArray, "content は配列であること")
       assertEquals(1, content.size())
-      assertEquals("text", content[0].path("type").asText())
+      assertEquals("text", content[0].path("type").stringValue())
       assertTrue(
-          content[0].path("text").asText().contains("/light/color"),
+          (content[0].path("text").stringValue() ?: "").contains("/light/color"),
           "テキストに OSC パスが含まれること",
       )
 
@@ -116,7 +116,7 @@ class McpToolsCallIntegrationTest {
       assertEquals(1, responses.size)
       val response = responses[0]
 
-      assertEquals("2.0", response.path("jsonrpc").asText())
+      assertEquals("2.0", response.path("jsonrpc").stringValue())
       assertEquals(2, response.path("id").asInt())
       assertNull(response.get("result"), "result フィールドがないこと")
 
@@ -124,7 +124,7 @@ class McpToolsCallIntegrationTest {
       assertNotNull(error, "error フィールドがあること")
       assertEquals(-32000, error.path("code").asInt())
       assertTrue(
-          error.path("message").asText().contains("nonexistent_tool"),
+          (error.path("message").stringValue() ?: "").contains("nonexistent_tool"),
           "エラーメッセージに不明なツール名が含まれること",
       )
     } finally {
@@ -158,7 +158,7 @@ class McpToolsCallIntegrationTest {
 
       val error = response.path("error")
       assertEquals(-32000, error.path("code").asInt())
-      assertEquals("UDP send failed", error.path("message").asText())
+      assertEquals("UDP send failed", error.path("message").stringValue())
     } finally {
       Files.deleteIfExists(schemaFile)
     }

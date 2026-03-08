@@ -161,7 +161,7 @@ private class OscMcpServer(
     while (true) {
       val messageBytes = protocol.readMessage() ?: break
       val root = mapper.readTree(messageBytes)
-      val method = root.path("method").asText("")
+      val method = root.path("method").stringValue() ?: ""
       val id = root.get("id")
 
       when (method) {
@@ -206,7 +206,7 @@ private class OscMcpServer(
 
   private suspend fun handleToolCall(id: JsonNode, params: JsonNode) {
     try {
-      val name = params.path("name").asText("")
+      val name = params.path("name").stringValue() ?: ""
       require(name.isNotBlank()) { "Tool name is required" }
 
       val argMap = linkedMapOf<String, Any?>()
@@ -358,7 +358,7 @@ internal object McpSchemaJsonSupport {
       specSchema.path("properties").properties().forEach { (name, schema) ->
         properties.set(name, schema as ObjectNode)
       }
-      specSchema.path("required").forEach { node -> required.add(node.asText()) }
+      specSchema.path("required").forEach { node -> required.add(node.stringValue() ?: "") }
     }
 
     return mapper.createObjectNode().apply {
@@ -472,7 +472,7 @@ internal object McpSchemaJsonSupport {
 
   fun jsonNodeToValue(node: JsonNode): Any? {
     return when {
-      node.isTextual -> node.asText()
+      node.isString -> node.stringValue()!!
       node.isInt -> node.intValue()
       node.isLong -> node.longValue()
       node.isFloat || node.isDouble || node.isBigDecimal -> node.doubleValue()

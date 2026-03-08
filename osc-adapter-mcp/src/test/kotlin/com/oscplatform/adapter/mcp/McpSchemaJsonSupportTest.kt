@@ -39,21 +39,21 @@ class McpSchemaJsonSupportTest {
     val schemaNode = McpSchemaJsonSupport.toInputSchema(mapper = mapper, spec = spec)
 
     val required = schemaNode.path("required")
-    val requiredNames = required.toList().map { it.asText() }.toSet()
+    val requiredNames = required.toList().map { it.stringValue() ?: "" }.toSet()
     assertTrue(requiredNames.contains("points"))
     assertFalse(requiredNames.contains("pointCount"))
 
     val pointsSchema = schemaNode.path("properties").path("points")
-    assertEquals("array", pointsSchema.path("type").asText())
-    assertEquals("pointCount", pointsSchema.path("x-osc-lengthFrom").asText())
+    assertEquals("array", pointsSchema.path("type").stringValue())
+    assertEquals("pointCount", pointsSchema.path("x-osc-lengthFrom").stringValue())
 
     val tupleSchema = pointsSchema.path("items")
-    assertEquals("object", tupleSchema.path("type").asText())
+    assertEquals("object", tupleSchema.path("type").stringValue())
 
-    val tupleRequired = tupleSchema.path("required").toList().map { it.asText() }.toSet()
+    val tupleRequired = tupleSchema.path("required").toList().map { it.stringValue() ?: "" }.toSet()
     assertEquals(setOf("x", "y", "z"), tupleRequired)
-    assertEquals("integer", tupleSchema.path("properties").path("x").path("type").asText())
-    assertEquals("number", tupleSchema.path("properties").path("z").path("type").asText())
+    assertEquals("integer", tupleSchema.path("properties").path("x").path("type").stringValue())
+    assertEquals("number", tupleSchema.path("properties").path("z").path("type").stringValue())
   }
 
   /** Fixed 長さの配列には minItems / maxItems が設定される */
@@ -64,7 +64,7 @@ class McpSchemaJsonSupportTest {
     val schemaNode = McpSchemaJsonSupport.toInputSchema(mapper = mapper, spec = spec)
 
     val valuesSchema = schemaNode.path("properties").path("values")
-    assertEquals("array", valuesSchema.path("type").asText())
+    assertEquals("array", valuesSchema.path("type").stringValue())
     assertEquals(3, valuesSchema.path("minItems").asInt())
     assertEquals(3, valuesSchema.path("maxItems").asInt())
   }
@@ -138,9 +138,9 @@ class McpSchemaJsonSupportTest {
     val schemaNode = McpSchemaJsonSupport.toInputSchema(mapper = mapper, spec = spec)
 
     val enabledSchema = schemaNode.path("properties").path("enabled")
-    assertEquals("boolean", enabledSchema.path("type").asText())
+    assertEquals("boolean", enabledSchema.path("type").stringValue())
     // required に含まれること
-    val required = schemaNode.path("required").toList().map { it.asText() }.toSet()
+    val required = schemaNode.path("required").toList().map { it.stringValue() ?: "" }.toSet()
     assertTrue(required.contains("enabled"))
   }
 
@@ -153,9 +153,9 @@ class McpSchemaJsonSupportTest {
     val schemaNode = McpSchemaJsonSupport.toInputSchema(mapper = mapper, spec = spec)
 
     val payloadSchema = schemaNode.path("properties").path("payload")
-    assertEquals("string", payloadSchema.path("type").asText())
-    assertEquals("base64", payloadSchema.path("contentEncoding").asText())
-    val required = schemaNode.path("required").toList().map { it.asText() }.toSet()
+    assertEquals("string", payloadSchema.path("type").stringValue())
+    assertEquals("base64", payloadSchema.path("contentEncoding").stringValue())
+    val required = schemaNode.path("required").toList().map { it.stringValue() ?: "" }.toSet()
     assertTrue(required.contains("payload"))
   }
 
@@ -168,6 +168,6 @@ class McpSchemaJsonSupportTest {
     val schemaNode = McpSchemaJsonSupport.toInputSchema(mapper = mapper, spec = spec)
 
     val itemsSchema = schemaNode.path("properties").path("flags").path("items")
-    assertEquals("boolean", itemsSchema.path("type").asText())
+    assertEquals("boolean", itemsSchema.path("type").stringValue())
   }
 }

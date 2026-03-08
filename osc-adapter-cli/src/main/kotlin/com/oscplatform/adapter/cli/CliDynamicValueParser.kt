@@ -23,7 +23,7 @@ internal object CliDynamicValueParser {
 
   fun jsonNodeToValue(node: JsonNode): Any? {
     return when {
-      node.isTextual -> node.asText()
+      node.isString -> node.stringValue()!!
       node.isInt -> node.intValue()
       node.isLong -> node.longValue()
       node.isFloat || node.isDouble || node.isBigDecimal -> node.doubleValue()

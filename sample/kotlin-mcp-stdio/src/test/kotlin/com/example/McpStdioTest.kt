@@ -84,7 +84,7 @@ class McpStdioTest {
       val tools = responses[0].path("result").path("tools")
       assertTrue(tools.isArray, "result.tools は配列であること")
 
-      val toolNames = tools.toList().map { it.path("name").asText() }.toSet()
+      val toolNames = tools.toList().map { it.path("name").stringValue() ?: "" }.toSet()
       assertTrue(
           toolNames.contains("bundle_set_scene"),
           "bundle_set_scene が tools/list に含まれること。実際: $toolNames",
@@ -121,15 +121,15 @@ class McpStdioTest {
       assertEquals(1, responses.size, "レスポンスが 1 件であること")
 
       val response = responses[0]
-      assertEquals("2.0", response.path("jsonrpc").asText())
+      assertEquals("2.0", response.path("jsonrpc").stringValue())
       assertEquals(2, response.path("id").asInt())
       assertNull(response.get("error"), "エラーがないこと: $response")
 
       val content = response.path("result").path("content")
       assertTrue(content.isArray, "result.content は配列であること")
-      assertEquals("text", content[0].path("type").asText())
+      assertEquals("text", content[0].path("type").stringValue())
 
-      val text = content[0].path("text").asText()
+      val text = content[0].path("text").stringValue() ?: ""
       assertTrue(text.isNotBlank(), "result.content[0].text が空でないこと")
 
       println("[Test 2] tools/call bundle_set_scene 成功応答: $text ✓")
