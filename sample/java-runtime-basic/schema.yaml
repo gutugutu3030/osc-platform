@@ -1,0 +1,7 @@
+messages:
+  - path: /device/flag
+    description: デバイスのフラグを設定する
+    args:
+      - name: enabled
+        kind: scalar
+        type: bool

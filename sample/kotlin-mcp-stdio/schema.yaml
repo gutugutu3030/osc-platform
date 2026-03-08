@@ -1,0 +1,27 @@
+messages:
+  - path: /light/color
+    description: RGB カラーを設定する
+    args:
+      - name: r
+        kind: scalar
+        type: int
+      - name: g
+        kind: scalar
+        type: int
+      - name: b
+        kind: scalar
+        type: int
+
+  - path: /device/flag
+    description: デバイスのフラグを設定する
+    args:
+      - name: enabled
+        kind: scalar
+        type: bool
+
+bundles:
+  - name: set_scene
+    description: カラーとフラグをアトミックに設定する
+    messages:
+      - ref: /light/color
+      - ref: /device/flag

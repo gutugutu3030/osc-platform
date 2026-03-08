@@ -1,0 +1,34 @@
+messages:
+  - path: /mesh/points
+    description: 3D ポイント群を設定する
+    args:
+      - name: pointCount
+        kind: scalar
+        type: int
+        role: length          # 配列 points の要素数を自動導出するための LENGTH フィールド
+      - name: points
+        kind: array
+        lengthFrom: pointCount  # pointCount を省略すると配列長から自動導出される
+        items:
+          kind: tuple
+          fields:
+            - name: x
+              type: int
+            - name: y
+              type: int
+            - name: z
+              type: float
+
+  - path: /device/flag
+    description: デバイスのフラグを設定する
+    args:
+      - name: enabled
+        kind: scalar
+        type: bool
+
+bundles:
+  - name: set_scene
+    description: ポイント群とデバイスフラグをアトミックに設定する
+    messages:
+      - ref: /mesh/points
+      - ref: /device/flag
