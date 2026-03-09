@@ -5,10 +5,11 @@ import javax.script.ScriptEngineManager
 import kotlin.io.path.readText
 
 class KotlinScriptSchemaLoader {
-  private val engine =
-      ScriptEngineManager().getEngineByExtension("kts")
-          ?: error(
-              "Kotlin script engine not found. Ensure kotlin-scripting-jsr223 is on the classpath")
+  private val engine by lazy {
+    ScriptEngineManager().getEngineByExtension("kts")
+        ?: error(
+            "Kotlin script engine not found. Ensure kotlin-scripting-jsr223 is on the classpath")
+  }
 
   fun load(path: java.nio.file.Path): OscSchema {
     val source = path.readText()

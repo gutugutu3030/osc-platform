@@ -61,6 +61,13 @@ class OscRuntime(
     handlers.computeIfAbsent(registered.path) { CopyOnWriteArrayList() }.add(handler)
   }
 
+  fun <T : OscMessage> on(companion: OscMessageCompanion<T>, handler: suspend (T) -> Unit) {
+    val spec =
+        schema.resolveMessage(companion.NAME)
+            ?: error("Schema has no message: ${companion.NAME}")
+    on(spec) { event -> handler(companion.fromNamedArgs(event.namedArgs)) }
+  }
+
   suspend fun start() {
     if (receiveJob != null) {
       return
@@ -100,6 +107,12 @@ class OscRuntime(
         target = target,
     )
   }
+
+  suspend fun <T : OscMessage> send(
+      companion: OscMessageCompanion<T>,
+      msg: T,
+      target: OscTarget,
+  ) = send(messageRef = companion.NAME, rawArgs = msg.toNamedArgs(), target = target)
 
   suspend fun sendBundle(
       messages: List<Pair<String, Map<String, Any?>>>,

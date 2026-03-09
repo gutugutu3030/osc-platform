@@ -1,5 +1,7 @@
 package com.oscplatform.adapter.cli
 
+import com.oscplatform.codegen.CodeGenOptions
+import com.oscplatform.codegen.KotlinCodeGenerator
 import com.oscplatform.core.runtime.OscRuntime
 import com.oscplatform.core.runtime.OscRuntimeEvent
 import com.oscplatform.core.schema.loader.SchemaLoader
@@ -32,6 +34,7 @@ class CliAdapter(
       "run" -> runServer(args.drop(1))
       "send" -> sendMessage(args.drop(1))
       "doc" -> generateDoc(args.drop(1))
+      "gen" -> generateCode(args.drop(1))
       "help",
       "-h",
       "--help" -> {
@@ -112,6 +115,90 @@ class CliAdapter(
         "sent ${parsed.messageRef} -> ${parsed.host}:${parsed.port} args=${parsed.arguments}",
     )
     return 0
+  }
+
+  private fun generateCode(args: List<String>): Int {
+    val parsed = parseGenCommand(args)
+    require(!parsed.packageName.isNullOrBlank()) {
+      "gen requires --package." +
+          " Example: osc gen --schema schema.yaml --package com.example.generated" +
+          " --lang kotlin --out build/generated/sources/osc"
+    }
+    val schemaPath = resolveSchemaPath(parsed.schemaPath)
+    val schema = schemaLoader.load(schemaPath)
+    val options = CodeGenOptions(packageName = parsed.packageName!!, language = parsed.lang)
+    val files =
+        when (options.language) {
+          "kotlin" -> KotlinCodeGenerator().generate(schema, options)
+          else -> error("Unsupported --lang: ${options.language}. Supported: kotlin")
+        }
+    val outputRoot = Path.of(parsed.outputPath ?: "build/generated/sources/osc")
+    files.forEach { (relativePath, content) ->
+      val file = outputRoot.resolve(relativePath)
+      Files.createDirectories(file.parent)
+      Files.writeString(file, content, StandardCharsets.UTF_8)
+      out.println("generated: $file")
+    }
+    out.println("gen complete: ${files.size} file(s)")
+    return 0
+  }
+
+  private fun parseGenCommand(args: List<String>): GenConfig {
+    var schemaPath: String? = null
+    var packageName: String? = null
+    var lang = "kotlin"
+    var outputPath: String? = null
+
+    var index = 0
+    while (index < args.size) {
+      val token = args[index]
+      when {
+        token == "--schema" -> {
+          schemaPath = args.valueAfter(index, "--schema")
+          index += 2
+        }
+        token.startsWith("--schema=") -> {
+          schemaPath = token.substringAfter('=')
+          index += 1
+        }
+        token == "--package" -> {
+          packageName = args.valueAfter(index, "--package")
+          index += 2
+        }
+        token.startsWith("--package=") -> {
+          packageName = token.substringAfter('=')
+          index += 1
+        }
+        token == "--lang" -> {
+          lang = args.valueAfter(index, "--lang")
+          index += 2
+        }
+        token.startsWith("--lang=") -> {
+          lang = token.substringAfter('=')
+          index += 1
+        }
+        token == "--out" -> {
+          outputPath = args.valueAfter(index, "--out")
+          index += 2
+        }
+        token.startsWith("--out=") -> {
+          outputPath = token.substringAfter('=')
+          index += 1
+        }
+        token.startsWith("--") -> error("Unknown option for gen: $token")
+        schemaPath == null -> {
+          schemaPath = token
+          index += 1
+        }
+        else -> error("Unexpected token in gen command: $token")
+      }
+    }
+    return GenConfig(
+        schemaPath = schemaPath,
+        packageName = packageName,
+        lang = lang,
+        outputPath = outputPath,
+    )
   }
 
   private fun generateDoc(args: List<String>): Int {
@@ -405,6 +492,7 @@ class CliAdapter(
             osc run [schemaPath] [--schema path] [--host 0.0.0.0] [--port 9000]
             osc send <messageRef> [--schema path] --host <targetHost> --port <targetPort> --arg value
             osc doc [schemaPath] [--schema path] [--out build/docs/osc-schema/index.html] [--format html|markdown] [--title "OSC Schema"]
+            osc gen [schemaPath] [--schema path] --package <packageName> [--lang kotlin] [--out build/generated/sources/osc]
 
             messageRef accepts schema message name (e.g. light.color) or OSC path (e.g. /light/color).
         """
@@ -431,6 +519,13 @@ private data class DocConfig(
     val outputPath: String?,
     val title: String?,
     val format: DocFormat?,
+)
+
+private data class GenConfig(
+    val schemaPath: String?,
+    val packageName: String?,
+    val lang: String,
+    val outputPath: String?,
 )
 
 private enum class DocFormat {

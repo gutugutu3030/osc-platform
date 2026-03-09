@@ -1,5 +1,6 @@
 plugins {
   kotlin("jvm")
+  id("com.oscplatform.schema-codegen")
   application
 }
 
@@ -14,3 +15,10 @@ dependencies {
 }
 
 application { mainClass = "com.example.MainKt" }
+
+// schema.yaml から com.example.osc.generated パッケージへ Kotlin クラスを生成する
+oscSchemaCodegen {
+  schema.set(layout.projectDirectory.file("schema.yaml"))
+  packageName.set("com.example.osc.generated")
+  language.set("kotlin")
+}

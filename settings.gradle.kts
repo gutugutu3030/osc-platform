@@ -15,4 +15,6 @@ include(
     "osc-adapter-cli",
     "osc-adapter-mcp",
     "osc-cli",
+    "osc-codegen",
+    "osc-gradle-plugin",
 )

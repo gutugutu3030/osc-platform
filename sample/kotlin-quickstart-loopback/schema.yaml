@@ -1,0 +1,14 @@
+messages:
+  - path: /light/color
+    name: light.color
+    description: "RGB カラーを設定する"
+    args:
+      - name: r
+        kind: scalar
+        type: int
+      - name: g
+        kind: scalar
+        type: int
+      - name: b
+        kind: scalar
+        type: int
