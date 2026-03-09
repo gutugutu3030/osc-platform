@@ -55,14 +55,19 @@ class KotlinCodeGenerator {
     val tupleArrayArgs =
         spec.args.filterIsInstance<ArrayArgNode>().filter { it.item is ArrayItemSpec.TupleItem }
 
-    // fromNamedArgs が unchecked cast を必要とするか
-    val needsSuppressCast = spec.args.any { it is ArrayArgNode }
+    // fromNamedArgs で必要なインポートを判定
+    val hasScalarArrayArgs =
+        constructorArgs.any { it is ArrayArgNode && it.item is ArrayItemSpec.ScalarItem }
+    val hasTupleArrayArgs = tupleArrayArgs.isNotEmpty()
 
     return buildString {
       appendLine("package $packageName")
       appendLine()
       appendLine("import com.oscplatform.core.runtime.OscMessage")
       appendLine("import com.oscplatform.core.runtime.OscMessageCompanion")
+      appendLine("import com.oscplatform.core.runtime.oscTyped")
+      if (hasScalarArrayArgs) appendLine("import com.oscplatform.core.runtime.oscTypedList")
+      if (hasTupleArrayArgs) appendLine("import com.oscplatform.core.runtime.oscTypedMapList")
       appendLine()
 
       // --- class header ---
@@ -129,34 +134,32 @@ class KotlinCodeGenerator {
       appendLine("        override val NAME: String = \"${spec.name}\"")
       appendLine()
 
-      if (needsSuppressCast) {
-        appendLine("        @Suppress(\"UNCHECKED_CAST\")")
-      }
       appendLine("        override fun fromNamedArgs(args: Map<String, Any?>): $className =")
       appendLine("            $className(")
       constructorArgs.forEach { node ->
         when (node) {
           is ScalarArgNode -> {
             val kt = oscTypeToKotlin(node.type)
-            appendLine("                ${node.name} = args[\"${node.name}\"] as $kt,")
+            appendLine(
+                "                ${node.name} = args.oscTyped<$kt>(\"${node.name}\", NAME),")
           }
           is ArrayArgNode ->
               when (val item = node.item) {
                 is ArrayItemSpec.ScalarItem -> {
                   val kt = oscTypeToKotlin(item.type)
                   appendLine(
-                      "                ${node.name} =" + " (args[\"${node.name}\"] as List<$kt>),")
+                      "                ${node.name} =" +
+                          " args.oscTypedList<$kt>(\"${node.name}\", NAME),")
                 }
                 is ArrayItemSpec.TupleItem -> {
                   val nestedName = toNestedClassName(node.name)
                   val fieldMappings =
                       item.fields.joinToString(", ") { field ->
-                        "${field.name} = m[\"${field.name}\"]" +
-                            " as ${oscTypeToKotlin(field.type)}"
+                        "${field.name} = m.oscTyped<${oscTypeToKotlin(field.type)}>(\"${field.name}\", NAME)"
                       }
                   appendLine(
                       "                ${node.name} =" +
-                          " (args[\"${node.name}\"] as List<Map<String, Any?>>)" +
+                          " args.oscTypedMapList(\"${node.name}\", NAME)" +
                           ".map { m -> $nestedName($fieldMappings) },")
                 }
               }

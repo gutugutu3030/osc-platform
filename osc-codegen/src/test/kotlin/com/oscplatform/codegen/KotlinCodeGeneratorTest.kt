@@ -42,14 +42,14 @@ class KotlinCodeGeneratorTest {
     assertContains(content, "val r: Int,")
     assertContains(content, "val g: Int,")
     assertContains(content, "val b: Int,")
-    assertContains(content, "fun toNamedArgs(): Map<String, Any?>")
+    assertContains(content, "override fun toNamedArgs(): Map<String, Any?>")
     assertContains(content, "\"r\" to r,")
     assertContains(content, "\"g\" to g,")
     assertContains(content, "\"b\" to b,")
-    assertContains(content, "const val PATH: String = \"/light/color\"")
-    assertContains(content, "const val NAME: String = \"light.color\"")
-    assertContains(content, "fun fromNamedArgs(args: Map<String, Any?>): LightColor")
-    assertContains(content, "r = args[\"r\"] as Int,")
+    assertContains(content, "override val PATH: String = \"/light/color\"")
+    assertContains(content, "override val NAME: String = \"light.color\"")
+    assertContains(content, "override fun fromNamedArgs(args: Map<String, Any?>): LightColor")
+    assertContains(content, "r = args.oscTyped<Int>(\"r\", NAME),")
   }
 
   // -------------------------------------------------------------------------
@@ -80,8 +80,8 @@ class KotlinCodeGeneratorTest {
     // toNamedArgs に valueCount が含まれる
     assertContains(content, "\"valueCount\" to valueCount,")
 
-    // fromNamedArgs に values の cast が含まれる
-    assertContains(content, "values = (args[\"values\"] as List<Float>),")
+    // fromNamedArgs で型安全ヘルパーを使う
+    assertContains(content, "values = args.oscTypedList<Float>(\"values\", NAME),")
   }
 
   // -------------------------------------------------------------------------
@@ -119,11 +119,11 @@ class KotlinCodeGeneratorTest {
     assertContains(content, "points.map { mapOf(")
     assertContains(content, "\"x\" to it.x")
 
-    // fromNamedArgs で unchecked_cast を抑制
-    assertContains(content, "@Suppress(\"UNCHECKED_CAST\")")
+    // fromNamedArgs で型安全ヘルパーを使う（@Suppress は生成コードに不要）
+    assertFalse(content.contains("@Suppress(\"UNCHECKED_CAST\")"), "@Suppress は生成コードに含まれないこと")
     assertContains(
         content,
-        "(args[\"points\"] as List<Map<String, Any?>>).map { m -> Point(",
+        "args.oscTypedMapList(\"points\", NAME).map { m -> Point(",
     )
   }
 
