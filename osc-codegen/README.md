@@ -9,7 +9,7 @@
 | クラス / オブジェクト | 役割 |
 |---|---|
 | `OscCodegen` | スキーマファイルパスからコード生成するファサード |
-| `KotlinCodeGenerator` | `OscMessageSpec` → Kotlin ソースへの変換ロジック |
+| `KotlinCodeGenerator` | `OscMessageSpec` / `OscBundleSpec` → Kotlin ソースへの変換ロジック |
 | `CodeGenOptions` | 生成先パッケージ名・言語などのオプション |
 
 ## 生成されるクラスの構造
@@ -55,12 +55,18 @@ data class LightColor(
 
         override fun fromNamedArgs(args: Map<String, Any?>): LightColor =
             LightColor(
-                r = args["r"] as Int,
-                g = args["g"] as Int,
-                b = args["b"] as Int,
+                r = args.oscTyped<Int>("r", NAME),
+                g = args.oscTyped<Int>("g", NAME),
+                b = args.oscTyped<Int>("b", NAME),
             )
     }
 }
+```
+
+`fromNamedArgs` 内の `oscTyped<T>()` は `osc-core` の型安全キャストヘルパーで、型不一致があればメッセージ名・キー名入りの詳細なエラーになります：
+
+```
+[light.color] Type mismatch for 'r': expected Int, got String (value=hello)
 ```
 
 ### 生成規則
@@ -71,28 +77,84 @@ data class LightColor(
 | `kind: scalar, role: length` | 配列サイズの computed property（コンストラクタには含まれない） |
 | `kind: array` （スカラー要素） | `List<T>` コンストラクタパラメータ |
 | `kind: array` （タプル要素） | `List<NestedDataClass>` コンストラクタパラメータ + nested data class |
+| `bundles` エントリ | 各メッセージクラスをフィールドに持つ Bundle ファサードクラス |
 
 ### インターフェース実装
 
 生成クラスは `osc-core` が定義する以下のインターフェースを実装します。
 
-- **`OscMessage`** — `toNamedArgs()` を持つ。`OscRuntime.send(companion, msg, target)` に渡せる。
-- **`OscMessageCompanion<T>`** — companion object が実装。`OscRuntime.on(companion) { msg -> }` に渡せる。
+| インターフェース | 実装対象 | 用途 |
+|---|---|---|
+| `OscMessage` | メッセージクラス本体 | `OscRuntime.send(companion, msg, target)` に渡せる |
+| `OscMessageCompanion<T>` | companion object | `OscRuntime.on(companion) { msg -> }` に渡せる |
+| `OscBundle` | バンドルクラス本体 | `OscRuntime.sendBundle(bundle, target)` に渡せる |
+| `OscBundleCompanion<T>` | バンドル companion object | `NAME` を提供 |
 
-これにより `OscRuntime` のオーバーロード API を使うと、spec 解決や手動デシリアライズが不要になります。
+インターフェースにより `OscRuntime` の高レベル API を使うと、spec 解決・手動デシリアライズ・unsafe キャストが不要になります。
 
 ```kotlin
-// before（低レベル API）
-val spec = schema.resolveMessage(LightColor.NAME) ?: error("missing")
-runtime.on(spec) { event ->
-    val color = LightColor.fromNamedArgs(event.namedArgs)
-}
-
-// after（生成クラスを直接渡す高レベル API）
+// on: spec 解決不要・手動 fromNamedArgs 不要
 runtime.on(LightColor) { color ->
     println("r=${color.r}, g=${color.g}, b=${color.b}")
 }
+
+// send: NAME ・ toNamedArgs() を自動解決
+runtime.send(
+    companion = LightColor,
+    msg = LightColor(r = 255, g = 0, b = 128),
+    target = OscTarget("127.0.0.1", 9000),
+)
+
+// sendBundle: 各メッセージの変換をバンドルクラス内部に隐蔾
+runtime.sendBundle(
+    bundle = SetSceneBundle(
+        meshPoints = MeshPoints(points = listOf(MeshPoints.Point(x = 1, y = 2, z = 3.0f))),
+        deviceFlag = DeviceFlag(enabled = true),
+    ),
+    target = OscTarget("127.0.0.1", 9000),
+)
 ```
+
+## バンドルクラスの生成
+
+`schema.yaml` の `bundles` エントリに対して、各メッセージクラスをフィールドに持つ Bundle ファサードクラスが生成されます。
+
+### 入力スキーマ例
+
+```yaml
+bundles:
+  - name: set_scene
+    description: ポイント群とデバイスフラグをアトミックに設定する
+    messages:
+      - ref: /mesh/points
+      - ref: /device/flag
+```
+
+### 生成される Bundle クラス
+
+```kotlin
+data class SetSceneBundle(
+    val meshPoints: MeshPoints,
+    val deviceFlag: DeviceFlag,
+) : OscBundle {
+
+    override fun toMessages(): List<Pair<String, Map<String, Any?>>> = listOf(
+        MeshPoints.NAME to meshPoints.toNamedArgs(),
+        DeviceFlag.NAME to deviceFlag.toNamedArgs(),
+    )
+
+    companion object : OscBundleCompanion<SetSceneBundle> {
+        override val NAME: String = "set_scene"
+    }
+}
+```
+
+### バンドルクラス名の導出ルール
+
+| 変換元 | 変換後 | 例 |
+|---|---|---|
+| アンダースコア / ドット / ハイフン 区切り | 各セグメントを PascalCase で連結し、末尾に `Bundle` | `set_scene` → `SetSceneBundle` |
+| ドット区切り | 同上 | `light.setup` → `LightSetupBundle` |
 
 ## プログラムから直接使う
 

@@ -1,5 +1,8 @@
 package com.example
 
+import com.example.osc.generated.DeviceFlag
+import com.example.osc.generated.MeshPoints
+import com.example.osc.generated.SetSceneBundle
 import com.oscplatform.core.runtime.OscRuntime
 import com.oscplatform.core.runtime.OscRuntimeEvent
 import com.oscplatform.core.schema.loader.SchemaLoader
@@ -71,22 +74,20 @@ fun main(): Unit = runBlocking {
   delay(300) // 受信イベントを待つ
 
   // -------------------------------------------------------------------------
-  // Step 2: bundle "set_scene" を sendBundle でアトミック送信
+  // Step 2: bundle "set_scene" を sendBundle でアトミック送信（生成バンドルクラス使用）
   // -------------------------------------------------------------------------
   println("\n--- Step 2: bundle (set_scene) を sendBundle で送信 ---")
-  runtime.sendBundle(
-      messages =
-          listOf(
-              "mesh.points" to
-                  mapOf(
-                      "points" to
-                          listOf(
-                              mapOf("x" to 1, "y" to 2, "z" to 3.0f),
-                          )),
-              "/device/flag" to mapOf("enabled" to true),
-          ),
-      target = target,
-  )
+  val bundle =
+      SetSceneBundle(
+          meshPoints =
+              MeshPoints(
+                  points =
+                      listOf(
+                          MeshPoints.Point(x = 1, y = 2, z = 3.0f),
+                      )),
+          deviceFlag = DeviceFlag(enabled = true),
+      )
+  runtime.sendBundle(bundle = bundle, target = target)
   delay(300)
 
   // -------------------------------------------------------------------------

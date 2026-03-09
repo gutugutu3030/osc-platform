@@ -1,5 +1,6 @@
 package com.oscplatform.codegen
 
+import com.oscplatform.core.schema.dsl.BOOL
 import com.oscplatform.core.schema.dsl.FLOAT
 import com.oscplatform.core.schema.dsl.INT
 import com.oscplatform.core.schema.dsl.LENGTH
@@ -153,5 +154,60 @@ class KotlinCodeGeneratorTest {
     val files = KotlinCodeGenerator().generate(schema, CodeGenOptions("pkg"))
     assertTrue(files.containsKey("pkg/AB.kt"))
     assertTrue(files.containsKey("pkg/CD.kt"))
+  }
+
+  // -------------------------------------------------------------------------
+  // バンドルクラスの生成
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun generateBundleClass() {
+    val schema = oscSchema {
+      message("/mesh/points") {
+        scalar("pointCount", INT, role = LENGTH)
+        array("points", lengthFrom = "pointCount") {
+          tuple {
+            field("x", INT)
+            field("z", FLOAT)
+          }
+        }
+      }
+      message("/device/flag") { scalar("enabled", BOOL) }
+      bundle("set_scene") {
+        message("mesh.points")
+        message("device.flag")
+      }
+    }
+
+    val files = KotlinCodeGenerator().generate(schema, CodeGenOptions("com.example.gen"))
+
+    // バンドルクラスのファイルが生成される
+    val bundlePath = "com/example/gen/SetSceneBundle.kt"
+    assertTrue(files.containsKey(bundlePath), "バンドルファイル $bundlePath が存在すること")
+
+    val content = files[bundlePath]!!
+    assertContains(content, "import com.oscplatform.core.runtime.OscBundle")
+    assertContains(content, "import com.oscplatform.core.runtime.OscBundleCompanion")
+    assertContains(content, "data class SetSceneBundle(")
+    assertContains(content, "val meshPoints: MeshPoints,")
+    assertContains(content, "val deviceFlag: DeviceFlag,")
+    assertContains(content, ") : OscBundle {")
+    assertContains(content, "override fun toMessages(): List<Pair<String, Map<String, Any?>>>")
+    assertContains(content, "MeshPoints.NAME to meshPoints.toNamedArgs(),")
+    assertContains(content, "DeviceFlag.NAME to deviceFlag.toNamedArgs(),")
+    assertContains(content, "companion object : OscBundleCompanion<SetSceneBundle> {")
+    assertContains(content, "override val NAME: String = \"set_scene\"")
+  }
+
+  // -------------------------------------------------------------------------
+  // バンドルクラス名の導出
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun toBundleClassNameConvertsNameCorrectly() {
+    val gen = KotlinCodeGenerator()
+    assert(gen.toBundleClassName("set_scene") == "SetSceneBundle")
+    assert(gen.toBundleClassName("light.setup") == "LightSetupBundle")
+    assert(gen.toBundleClassName("update-all") == "UpdateAllBundle")
   }
 }

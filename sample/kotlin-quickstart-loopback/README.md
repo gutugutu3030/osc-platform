@@ -89,15 +89,13 @@ runtime.on(lightColorSpec) { event ->
 
 ```kotlin
 // コンパイル時に型チェックが効く
-val msg = LightColor(r = 255, g = 0, b = 128)
 runtime.send(
-    messageRef = LightColor.NAME,    // = "light.color"
-    rawArgs = msg.toNamedArgs(),
+    companion = LightColor,
+    msg = LightColor(r = 255, g = 0, b = 128),
     target = OscTarget("127.0.0.1", 19000),
 )
 
-runtime.on(lightColorSpec) { event ->
-    val color = LightColor.fromNamedArgs(event.namedArgs)
+runtime.on(LightColor) { color ->
     println("r=${color.r}")          // プロパティ補完が効く
 }
 ```

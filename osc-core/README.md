@@ -85,6 +85,8 @@ val schema = SchemaLoader().load(Paths.get("schema.kts"))
 > 受信ハンドラ登録には `OscMessageSpec` を渡す `runtime.on(spec, handler)` を使用してください。  
 > 詳細は [ルートの README](../README.md#破壊的変更--v030-breaking-changes) を参照してください。
 
+### 低レベル API（スキーマ直接操作）
+
 ```kotlin
 val transport = UdpOscTransport(bindHost = "127.0.0.1", bindPort = 9000)
 val runtime = OscRuntime(schema = schema, transport = transport)
@@ -107,6 +109,42 @@ runtime.send(
 runtime.stop()
 ```
 
+### 高レベル API（codegen 生成クラスを利用）
+
+`osc-codegen` が生成したクラスを使うと、spec 解決・手動シリアライズ・unsafe キャストをすべて省略できます。
+
+```kotlin
+// on: 生成クラスの companion を渡すだけ。ハンドラ引数が型付きになる
+runtime.on(LightColor) { color ->
+    println("r=${color.r}, g=${color.g}, b=${color.b}")
+}
+
+// send: companion + インスタンスを渡す
+runtime.send(
+    companion = LightColor,
+    msg = LightColor(r = 255, g = 0, b = 128),
+    target = OscTarget("127.0.0.1", 9000),
+)
+
+// sendBundle: 生成バンドルクラスをそのまま渡す
+runtime.sendBundle(
+    bundle = SetSceneBundle(
+        meshPoints = MeshPoints(points = listOf(MeshPoints.Point(x = 1, y = 2, z = 3.0f))),
+        deviceFlag = DeviceFlag(enabled = true),
+    ),
+    target = OscTarget("127.0.0.1", 9000),
+)
+```
+
+生成クラスが実装するインターフェースは以下のとおりです：
+
+| インターフェース | 実装対象 | 役割 |
+|---|---|---|
+| `OscMessage` | メッセージクラス本体 | `toNamedArgs()` を提供 |
+| `OscMessageCompanion<T>` | メッセージクラスの companion object | `NAME`・`PATH`・`fromNamedArgs()` を提供 |
+| `OscBundle` | バンドルクラス本体 | `toMessages()` で各メッセージの namedArgs に変換 |
+| `OscBundleCompanion<T>` | バンドルクラスの companion object | `NAME` を提供 |
+
 ### イベント種別
 
 | イベント | 説明 |
@@ -114,6 +152,14 @@ runtime.stop()
 | `OscRuntimeEvent.Received` | バリデーション済みパケットを受信 |
 | `OscRuntimeEvent.ValidationError` | 受信パケットがスキーマに不適合 |
 | `OscRuntimeEvent.TransportErrorEvent` | Transport 受信ループでエラー発生 |
+
+### namedArgs の型安全キャスト
+
+低レベル API で `event.namedArgs` から値を取り出す際は `OscNamedArgs.kt` のヘルパーを使うと詳細なエラーメッセージが得られます：
+
+```kotlin
+val r = event.namedArgs.oscTyped<Int>("r", "light.color")   // 型不一致時に詳細エラー
+```
 
 ## Transport インターフェース
 

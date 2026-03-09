@@ -141,6 +141,12 @@ class OscRuntime(
     )
   }
 
+  suspend fun <T : OscBundle> sendBundle(
+      bundle: T,
+      target: OscTarget,
+      timeTag: Long = OscTimeTag.IMMEDIATE,
+  ) = sendBundle(messages = bundle.toMessages(), target = target, timeTag = timeTag)
+
   private suspend fun processPacket(packet: OscPacket) {
     when (packet) {
       is OscMessagePacket -> processMessage(packet)

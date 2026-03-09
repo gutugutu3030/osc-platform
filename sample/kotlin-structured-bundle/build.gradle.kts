@@ -1,5 +1,6 @@
 plugins {
   kotlin("jvm")
+  id("com.oscplatform.schema-codegen")
   application
 }
 
@@ -14,3 +15,8 @@ dependencies {
 }
 
 application { mainClass = "com.example.MainKt" }
+
+oscSchemaCodegen {
+  schema.set(layout.projectDirectory.file("schema.yaml"))
+  packageName.set("com.example.osc.generated")
+}

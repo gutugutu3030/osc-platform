@@ -3,6 +3,7 @@ package com.oscplatform.codegen
 import com.oscplatform.core.schema.ArrayArgNode
 import com.oscplatform.core.schema.ArrayItemSpec
 import com.oscplatform.core.schema.LengthSpec
+import com.oscplatform.core.schema.OscBundleSpec
 import com.oscplatform.core.schema.OscMessageSpec
 import com.oscplatform.core.schema.OscSchema
 import com.oscplatform.core.schema.OscType
@@ -27,11 +28,18 @@ class KotlinCodeGenerator {
    * @return 相対ファイルパス → ファイル内容 のマップ
    */
   fun generate(schema: OscSchema, options: CodeGenOptions): Map<String, String> {
-    return schema.messages.associate { spec ->
-      val className = toClassName(spec.name)
-      val packagePath = options.packageName.replace('.', '/')
-      "$packagePath/$className.kt" to generateClass(spec, options.packageName)
-    }
+    val packagePath = options.packageName.replace('.', '/')
+    val messageFiles =
+        schema.messages.associate { spec ->
+          "$packagePath/${toClassName(spec.name)}.kt" to
+              generateClass(spec, options.packageName)
+        }
+    val bundleFiles =
+        schema.bundles.associate { spec ->
+          "$packagePath/${toBundleClassName(spec.name)}.kt" to
+              generateBundle(spec, schema, options.packageName)
+        }
+    return messageFiles + bundleFiles
   }
 
   /** 単一の [OscMessageSpec] から Kotlin クラスのソースを生成する。 テストから直接呼び出せるよう internal スコープにしていない。 */
@@ -208,4 +216,64 @@ class KotlinCodeGenerator {
         OscType.BOOL -> "Boolean"
         OscType.BLOB -> "ByteArray"
       }
+
+  /**
+   * [OscBundleSpec] から Bundle ファサード data class のソースを生成する。
+   *
+   * 生成規則:
+   * - バンドル名をアンダースコア/ドット区切りで分解し PascalCase に変換、末尾に `Bundle` を付与
+   * - 各 messageRef に対応する生成メッセージクラスをコンストラクタパラメータとして列挙
+   * - [OscBundle] を実装し `toMessages()` で `List<Pair<String, Map<String, Any?>>>` を構成
+   * - companion object が [OscBundleCompanion] を実装し `NAME` を提供
+   */
+  fun generateBundle(spec: OscBundleSpec, schema: OscSchema, packageName: String): String {
+    val className = toBundleClassName(spec.name)
+    val params =
+        spec.messageRefs.map { ref ->
+          val msgSpec =
+              schema.resolveMessage(ref)
+                  ?: error("Bundle '${spec.name}' references unknown message '$ref'")
+          val msgClass = toClassName(msgSpec.name)
+          val paramName = toParamName(msgClass)
+          Pair(paramName, msgClass)
+        }
+
+    return buildString {
+      appendLine("package $packageName")
+      appendLine()
+      appendLine("import com.oscplatform.core.runtime.OscBundle")
+      appendLine("import com.oscplatform.core.runtime.OscBundleCompanion")
+      appendLine()
+      appendLine("data class $className(")
+      params.forEach { (paramName, msgClass) ->
+        appendLine("    val $paramName: $msgClass,")
+      }
+      appendLine(") : OscBundle {")
+      appendLine()
+      appendLine(
+          "    override fun toMessages(): List<Pair<String, Map<String, Any?>>> = listOf(")
+      params.forEach { (paramName, msgClass) ->
+        appendLine("        $msgClass.NAME to $paramName.toNamedArgs(),")
+      }
+      appendLine("    )")
+      appendLine()
+      appendLine("    companion object : OscBundleCompanion<$className> {")
+      appendLine("        override val NAME: String = \"${spec.name}\"")
+      appendLine("    }")
+      appendLine("}")
+    }
+  }
+
+  /**
+   * バンドル名から Bundle クラス名を導出する。
+   *
+   * 例: `"set_scene"` → `"SetSceneBundle"`, `"light.setup"` → `"LightSetupBundle"`
+   */
+  fun toBundleClassName(name: String): String =
+      name.split(Regex("[._\\-]")).joinToString("") { part ->
+        part.replaceFirstChar { it.uppercaseChar() }
+      } + "Bundle"
+
+  /** クラス名をコンストラクタパラメータ名（先頭小文字化）に変換する。 */
+  private fun toParamName(className: String): String = className.replaceFirstChar { it.lowercaseChar() }
 }
