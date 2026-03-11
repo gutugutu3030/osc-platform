@@ -15,6 +15,31 @@ osc-platform の実行エントリポイントです。`osc-adapter-cli` と `os
 osc-cli/build/install/osc-cli/bin/osc-cli
 ```
 
+単一の executable jar を作る場合:
+
+```bash
+# リポジトリルートから実行
+./gradlew :osc-cli:shadowJar
+```
+
+出力先:
+
+```
+osc-cli/build/libs/osc-cli-<version>.jar
+```
+
+実行例:
+
+```bash
+java -jar osc-cli/build/libs/osc-cli-<version>.jar help
+java -jar osc-cli/build/libs/osc-cli-<version>.jar doc sample/kotlin-quickstart-loopback/schema.kts --format markdown --out build/osc-schema.md
+```
+
+補足:
+
+- `shadowJar` は依存ライブラリ込みの fat jar を生成します
+- `META-INF/services` も結合するため、`.kts` スキーマ読込で必要な `kotlin-scripting-jsr223` も `java -jar` で利用できます
+
 ## コマンド一覧
 
 ```
