@@ -17,11 +17,13 @@ import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.core.transport.OscTransport
 import com.oscplatform.transport.udp.UdpOscTransport
 import java.io.BufferedInputStream
+import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
 import java.io.PrintStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
+import java.util.Properties
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
@@ -43,9 +45,22 @@ class McpAdapter(
       output: OutputStream,
       transport: OscTransport,
   ): Int {
-    val parsed = parseArgs(args)
-    val schemaPath = resolveSchemaPath(parsed.schemaPath)
-    val schema = schemaLoader.load(schemaPath)
+    val parsed =
+        try {
+          parseArgs(args)
+        } catch (ex: Exception) {
+          err.println("error: ${ex.message}")
+          return 1
+        }
+
+    val schema =
+        try {
+          val schemaPath = resolveSchemaPath(parsed.schemaPath)
+          schemaLoader.load(schemaPath)
+        } catch (ex: Exception) {
+          err.println("error: ${ex.message}")
+          return 1
+        }
 
     val runtime = OscRuntime(schema = schema, transport = transport)
 
@@ -77,7 +92,7 @@ class McpAdapter(
             target = OscTarget(parsed.host, parsed.port),
         )
 
-    err.println("MCP server started schema=$schemaPath target=${parsed.host}:${parsed.port}")
+    err.println("MCP server started schema=${parsed.schemaPath} target=${parsed.host}:${parsed.port}")
     server.run()
     return 0
   }
@@ -167,7 +182,8 @@ private class OscMcpServer(
       when (method) {
         "initialize" -> {
           if (id != null) {
-            protocol.writeMessage(resultResponse(id, initializeResult()))
+            val clientVersion = root.path("params").path("protocolVersion").stringValue()
+            protocol.writeMessage(resultResponse(id, initializeResult(clientVersion)))
           }
         }
 
@@ -266,9 +282,13 @@ private class OscMcpServer(
     }
   }
 
-  private fun initializeResult(): ObjectNode {
+  private fun initializeResult(clientVersion: String? = null): ObjectNode {
+    val supportedVersions = listOf("2025-03-26", "2024-11-05")
+    val negotiatedVersion =
+        if (clientVersion != null && clientVersion in supportedVersions) clientVersion
+        else supportedVersions.first()
     return mapper.createObjectNode().apply {
-      put("protocolVersion", "2024-11-05")
+      put("protocolVersion", negotiatedVersion)
       set(
           "capabilities",
           mapper.createObjectNode().apply { set("tools", mapper.createObjectNode()) })
@@ -276,9 +296,19 @@ private class OscMcpServer(
           "serverInfo",
           mapper.createObjectNode().apply {
             put("name", "osc-platform")
-            put("version", "0.3.0")
+            put("version", loadAdapterVersion())
           })
     }
+  }
+
+  private fun loadAdapterVersion(): String {
+    val props = Properties()
+    try {
+      McpAdapter::class.java
+          .getResourceAsStream("/com/oscplatform/adapter/mcp/version.properties")
+          ?.use { props.load(it) }
+    } catch (_: IOException) {}
+    return props.getProperty("version", "unknown")
   }
 
   private fun toolsListResult(): ObjectNode {
@@ -548,9 +578,11 @@ private class McpStdioProtocol(
         return if (bytes.isEmpty()) null else bytes.toAsciiString()
       }
 
-      if (current == '\r'.code) {
-        val next = input.read()
-        require(next == '\n'.code) { "Invalid stdio frame header line ending" }
+      if (current == '\n'.code) {
+        // 行末の CR があれば取り除く（CRLF でも LF のみでも両対応）
+        if (bytes.isNotEmpty() && bytes.last() == '\r'.code.toByte()) {
+          bytes.removeAt(bytes.lastIndex)
+        }
         return bytes.toAsciiString()
       }
 
