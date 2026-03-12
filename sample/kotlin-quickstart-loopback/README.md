@@ -3,7 +3,7 @@
 OscRuntime を Kotlin から最短で使う最小サンプルです。  
 UDP ループバック（同一ポートへの自己送受信）で動作を確認します。
 
-**v0.4.0 以降:** `osc-gradle-plugin` による Kotlin クラス自動生成に対応しました。  
+**v0.5.0 以降:** `osc-gradle-plugin` による Kotlin クラス自動生成に対応しました。  
 `schema.yaml` から `LightColor` クラスが生成され、型安全な送受信が可能です。
 
 ## 目的

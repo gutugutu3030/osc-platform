@@ -92,7 +92,8 @@ class McpAdapter(
             target = OscTarget(parsed.host, parsed.port),
         )
 
-    err.println("MCP server started schema=${parsed.schemaPath} target=${parsed.host}:${parsed.port}")
+    err.println(
+        "MCP server started schema=${parsed.schemaPath} target=${parsed.host}:${parsed.port}")
     server.run()
     return 0
   }
@@ -304,7 +305,8 @@ private class OscMcpServer(
   private fun loadAdapterVersion(): String {
     val props = Properties()
     try {
-      McpAdapter::class.java
+      McpAdapter::class
+          .java
           .getResourceAsStream("/com/oscplatform/adapter/mcp/version.properties")
           ?.use { props.load(it) }
     } catch (_: IOException) {}

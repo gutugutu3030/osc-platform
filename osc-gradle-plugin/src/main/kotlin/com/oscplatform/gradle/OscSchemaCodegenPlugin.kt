@@ -73,9 +73,9 @@ class OscSchemaCodegenPlugin : Plugin<Project> {
   /**
    * Worker の classloader isolation に使用する classpath を収集する。
    *
-   * プラグイン自身の classloader から全 JAR / クラスディレクトリを取得する。
-   * これにより osc-codegen・osc-core・kotlin-scripting-jsr223 等が
-   * Gradle の内部 classpath と分離され、KTS スクリプトエンジンを安全に使用できる。
+   * プラグイン自身の classloader から全 JAR / クラスディレクトリを取得する。 これにより
+   * osc-codegen・osc-core・kotlin-scripting-jsr223 等が Gradle の内部 classpath と分離され、KTS
+   * スクリプトエンジンを安全に使用できる。
    */
   private fun collectWorkerClasspath(project: Project): FileCollection {
     val files = LinkedHashSet<File>()
@@ -88,14 +88,18 @@ class OscSchemaCodegenPlugin : Plugin<Project> {
       when (cl) {
         is URLClassLoader ->
             cl.urLs
-                .mapNotNull { url -> runCatching { File(url.toURI()).takeIf { it.exists() } }.getOrNull() }
+                .mapNotNull { url ->
+                  runCatching { File(url.toURI()).takeIf { it.exists() } }.getOrNull()
+                }
                 .forEach { files.add(it) }
         else ->
             try {
               @Suppress("UNCHECKED_CAST")
               val urls = cl.javaClass.getMethod("getURLs").invoke(cl) as? Array<java.net.URL>
               urls
-                  ?.mapNotNull { url -> runCatching { File(url.toURI()).takeIf { it.exists() } }.getOrNull() }
+                  ?.mapNotNull { url ->
+                    runCatching { File(url.toURI()).takeIf { it.exists() } }.getOrNull()
+                  }
                   ?.forEach { files.add(it) }
             } catch (_: Exception) {
               // URLClassLoader でない Gradle 内部 loader では無視する

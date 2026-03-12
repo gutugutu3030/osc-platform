@@ -7,5 +7,5 @@ pluginManagement {
 rootProject.name = "kotlin-quickstart-loopback"
 
 // 親リポジトリ (osc-platform) をコンポジットビルドとして取り込み、
-// com.oscplatform:*:0.4.0 をローカルビルド成果物で解決する。
+// com.oscplatform:*:0.5.0 をローカルビルド成果物で解決する。
 includeBuild("../..")

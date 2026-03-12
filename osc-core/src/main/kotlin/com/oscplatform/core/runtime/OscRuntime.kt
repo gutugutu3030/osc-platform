@@ -63,8 +63,7 @@ class OscRuntime(
 
   fun <T : OscMessage> on(companion: OscMessageCompanion<T>, handler: suspend (T) -> Unit) {
     val spec =
-        schema.resolveMessage(companion.NAME)
-            ?: error("Schema has no message: ${companion.NAME}")
+        schema.resolveMessage(companion.NAME) ?: error("Schema has no message: ${companion.NAME}")
     on(spec) { event -> handler(companion.fromNamedArgs(event.namedArgs)) }
   }
 
