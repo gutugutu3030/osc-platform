@@ -56,9 +56,15 @@ class OscRuntime(
       ConcurrentHashMap<String, CopyOnWriteArrayList<suspend (OscRuntimeEvent.Received) -> Unit>>()
   private var receiveJob: Job? = null
 
-  fun on(path: String, handler: suspend (OscRuntimeEvent.Received) -> Unit) {
-    val normalizedPath = OscSchema.normalizePath(path)
-    handlers.computeIfAbsent(normalizedPath) { CopyOnWriteArrayList() }.add(handler)
+  fun on(spec: OscMessageSpec, handler: suspend (OscRuntimeEvent.Received) -> Unit) {
+    val registered = resolveKnownMessageSpec(spec)
+    handlers.computeIfAbsent(registered.path) { CopyOnWriteArrayList() }.add(handler)
+  }
+
+  fun <T : OscMessage> on(companion: OscMessageCompanion<T>, handler: suspend (T) -> Unit) {
+    val spec =
+        schema.resolveMessage(companion.NAME) ?: error("Schema has no message: ${companion.NAME}")
+    on(spec) { event -> handler(companion.fromNamedArgs(event.namedArgs)) }
   }
 
   suspend fun start() {
@@ -85,9 +91,7 @@ class OscRuntime(
       rawArgs: Map<String, Any?>,
       target: OscTarget,
   ) {
-    val spec =
-        schema.resolveMessage(messageRef)
-            ?: throw IllegalArgumentException("Unknown message reference: $messageRef")
+    val spec = resolveMessageSpec(messageRef)
 
     val specArgNames = spec.args.map { it.name }.toSet()
     val unknownArgs = rawArgs.keys - specArgNames
@@ -103,6 +107,12 @@ class OscRuntime(
     )
   }
 
+  suspend fun <T : OscMessage> send(
+      companion: OscMessageCompanion<T>,
+      msg: T,
+      target: OscTarget,
+  ) = send(messageRef = companion.NAME, rawArgs = msg.toNamedArgs(), target = target)
+
   suspend fun sendBundle(
       messages: List<Pair<String, Map<String, Any?>>>,
       target: OscTarget,
@@ -112,9 +122,7 @@ class OscRuntime(
 
     val elements =
         messages.map { (messageRef, rawArgs) ->
-          val spec =
-              schema.resolveMessage(messageRef)
-                  ?: throw IllegalArgumentException("Unknown message reference: $messageRef")
+          val spec = resolveMessageSpec(messageRef)
 
           val specArgNames = spec.args.map { it.name }.toSet()
           val unknownArgs = rawArgs.keys - specArgNames
@@ -131,6 +139,12 @@ class OscRuntime(
         target = target,
     )
   }
+
+  suspend fun <T : OscBundle> sendBundle(
+      bundle: T,
+      target: OscTarget,
+      timeTag: Long = OscTimeTag.IMMEDIATE,
+  ) = sendBundle(messages = bundle.toMessages(), target = target, timeTag = timeTag)
 
   private suspend fun processPacket(packet: OscPacket) {
     when (packet) {
@@ -483,5 +497,23 @@ class OscRuntime(
       OscType.BOOL -> value is Boolean
       OscType.BLOB -> value is ByteArray
     }
+  }
+
+  private fun resolveMessageSpec(messageRef: String): OscMessageSpec {
+    return schema.resolveMessage(messageRef)
+        ?: throw IllegalArgumentException("Unknown message reference: $messageRef")
+  }
+
+  private fun resolveKnownMessageSpec(spec: OscMessageSpec): OscMessageSpec {
+    val normalizedPath = OscSchema.normalizePath(spec.path)
+    val resolved =
+        schema.findByPath(normalizedPath)
+            ?: throw IllegalArgumentException("Unknown message spec path: $normalizedPath")
+
+    require(resolved.name == spec.name) {
+      "Unknown message spec identity: expected name '${resolved.name}' for path '$normalizedPath', got '${spec.name}'"
+    }
+
+    return resolved
   }
 }

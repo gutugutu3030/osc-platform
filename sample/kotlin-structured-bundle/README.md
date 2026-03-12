@@ -2,11 +2,13 @@
 
 構造化引数（`lengthFrom` + タプル配列）と `sendBundle` を体験するサンプルです。
 
+`osc-gradle-plugin` によるコード生成を利用し、型安全な Bundle ファサードクラス（`SetSceneBundle`）で複数メッセージをアトミックに送信します。
+
 ## 目的
 
 - `kind: array` + `kind: tuple` フィールドを持つメッセージスキーマの定義方法を習得する
 - `pointCount`（LENGTH ロール）を省略し、配列長から自動導出させる
-- `sendBundle` で複数メッセージをアトミックに Bundle 送信する
+- 生成 Bundle クラス（`SetSceneBundle`）で複数メッセージを型安全にアトミック送信する
 - `runtime.events` を購読して `Received` / `ValidationError` イベントをログ出力する
 
 ## 前提
@@ -16,7 +18,7 @@
 ## 実行手順
 
 ```bash
-./gradlew -p sample/kotlin-structured-bundle run
+gradle -p sample/kotlin-structured-bundle run
 ```
 
 ## 期待される出力
@@ -72,7 +74,40 @@
 
 ```
 schema.yaml          ← /mesh/points, /device/flag, bundle set_scene
+build.gradle.kts     ← com.oscplatform.schema-codegen プラグイン設定
 src/main/kotlin/
   com/example/
     Main.kt          ← デモエントリポイント
+build/generated/sources/osc/main/kotlin/
+  com/example/osc/generated/
+    MeshPoints.kt      ← 自動生成（コミット不要）
+    DeviceFlag.kt      ← 自動生成（コミット不要）
+    SetSceneBundle.kt  ← 自動生成（コミット不要）
+```
+
+## コード生成の仕組み
+
+`schema.yaml` の `messages`・`bundles` 両方からクラスが生成されます。
+
+```
+generateOscSources  ← schema.yaml を入力に自動実行
+        ┃
+        ┃→ MeshPoints.kt     (メッセージクラス: OscMessage 実装)
+        ┃→ DeviceFlag.kt     (メッセージクラス: OscMessage 実装)
+        ┗→ SetSceneBundle.kt (バンドルクラス: OscBundle 実装)
+```
+
+`SetSceneBundle` は内部で `MeshPoints.toNamedArgs()` / `DeviceFlag.toNamedArgs()` を呼び出すため、  
+呼び元が生マップを意識することなく型安全に送信できます。
+
+```kotlin
+runtime.sendBundle(
+    bundle = SetSceneBundle(
+        meshPoints = MeshPoints(
+            points = listOf(MeshPoints.Point(x = 1, y = 2, z = 3.0f))
+        ),
+        deviceFlag = DeviceFlag(enabled = true),
+    ),
+    target = target,
+)
 ```

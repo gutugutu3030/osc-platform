@@ -1,7 +1,7 @@
 package com.example
 
+import com.example.osc.generated.LightColor
 import com.oscplatform.core.runtime.OscRuntime
-import com.oscplatform.core.runtime.OscRuntimeEvent
 import com.oscplatform.core.schema.loader.SchemaLoader
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.transport.udp.UdpOscTransport
@@ -10,12 +10,14 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.runBlocking
 
 /**
- * ループバック最小サンプル。
+ * ループバック最小サンプル（codegen 版）。
  * 1. SchemaLoader で schema.kts を読み込む
  * 2. UdpOscTransport を 127.0.0.1:19000 にバインド
  * 3. OscRuntime を start()
- * 4. /light/color を自分自身 (127.0.0.1:19000) へ送信
- * 5. 受信ハンドラで 1 件確認後に stop() して終了
+ * 4. 生成型 [LightColor] を使って /light/color を自分自身へ送信
+ * 5. 受信ハンドラで [LightColor.fromNamedArgs] により型安全に受け取り、stop() して終了
+ *
+ * `LightColor` は `schema.yaml` から `generateOscSources` タスクが自動生成するクラスです。
  */
 fun main(): Unit = runBlocking {
   // --- スキーマ読み込み ---
@@ -28,10 +30,10 @@ fun main(): Unit = runBlocking {
   val transport = UdpOscTransport(bindHost = "127.0.0.1", bindPort = 19000)
   val runtime = OscRuntime(schema = schema, transport = transport)
 
-  // --- 受信ハンドラ登録 (suspend ではない通常関数) ---
+  // --- 受信ハンドラ登録: 生成型で型安全に受け取る ---
   val received = CompletableDeferred<Unit>()
-  runtime.on("/light/color") { event: OscRuntimeEvent.Received ->
-    println("[Received] /light/color  namedArgs=${event.namedArgs}")
+  runtime.on(LightColor) { color ->
+    println("[Received] ${LightColor.PATH}  r=${color.r}, g=${color.g}, b=${color.b}")
     received.complete(Unit)
   }
 
@@ -39,13 +41,14 @@ fun main(): Unit = runBlocking {
   runtime.start()
   println("[Runtime] 起動完了 UDP 127.0.0.1:19000")
 
-  // --- 送信 ---
+  // --- 送信: 生成型で型安全に送る ---
+  val msg = LightColor(r = 255, g = 0, b = 128)
   runtime.send(
-      messageRef = "light.color", // パス "/light/color" でも可
-      rawArgs = mapOf("r" to 255, "g" to 0, "b" to 128),
+      companion = LightColor,
+      msg = msg,
       target = OscTarget("127.0.0.1", 19000),
   )
-  println("[Send]    /light/color r=255, g=0, b=128")
+  println("[Send]    ${LightColor.PATH} r=${msg.r}, g=${msg.g}, b=${msg.b}")
 
   // --- 受信待ち & 終了 ---
   received.await()
