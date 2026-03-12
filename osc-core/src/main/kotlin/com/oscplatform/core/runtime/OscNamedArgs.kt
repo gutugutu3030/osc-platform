@@ -3,8 +3,7 @@ package com.oscplatform.core.runtime
 /**
  * codegen が生成する [OscMessage.fromNamedArgs] 内で使う型安全キャストヘルパー。
  *
- * namedArgs の値を [OscType] に対応する Kotlin 型で取り出す。
- * 通常の `as T` キャストと違い、以下の情報を含む詳細なエラーを早期に投げる:
+ * namedArgs の値を [OscType] に対応する Kotlin 型で取り出す。 通常の `as T` キャストと違い、以下の情報を含む詳細なエラーを早期に投げる:
  * - どのメッセージの (`messageName`)
  * - どの引数が (`key`)
  * - 期待する型は何か (`expected ...`)
@@ -32,8 +31,7 @@ inline fun <reified T : Any> Map<String, Any?>.oscTyped(key: String, messageName
 /**
  * スカラー要素の配列引数を安全に取り出す。
  *
- * JVM の型消去により要素型の完全な検証はできないが、先頭要素で型チェックを行い
- * 不正な要素を早期に検出する。
+ * JVM の型消去により要素型の完全な検証はできないが、先頭要素で型チェックを行い 不正な要素を早期に検出する。
  *
  * @throws IllegalArgumentException キーが存在しない、List でない、または先頭要素の型が一致しない場合
  */

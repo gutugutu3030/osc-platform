@@ -9,9 +9,8 @@ import org.gradle.workers.WorkAction
 /**
  * classloader isolation モードで実行されるコード生成 Worker。
  *
- * Gradle の内部 Kotlin スクリプティング基盤と衝突しないよう、
- * KTS スクリプトエンジン（kotlin-scripting-jsr223）は
- * 専用の isolated classloader 内でのみロードされる。
+ * Gradle の内部 Kotlin スクリプティング基盤と衝突しないよう、 KTS スクリプトエンジン（kotlin-scripting-jsr223）は 専用の isolated
+ * classloader 内でのみロードされる。
  */
 abstract class GenerateOscSourcesWorkAction : WorkAction<GenerateOscSourcesWorkParameters> {
 

@@ -13,34 +13,36 @@ import kotlin.test.assertIs
 import kotlin.test.assertNotNull
 
 /**
- * トップレベルの full-example.yaml（全機能を網羅したリアルなスキーマ）を
- * [YamlSchemaLoader] で読み込み、期待どおりにパースされることを検証する結合テスト。
+ * トップレベルの full-example.yaml（全機能を網羅したリアルなスキーマ）を [YamlSchemaLoader] で読み込み、期待どおりにパースされることを検証する結合テスト。
  *
- * インライン YAML のユニットテストでは カバーしにくい「7 メッセージ＋バンドル」規模の
- * リグレッション検出を目的としている。
+ * インライン YAML のユニットテストでは カバーしにくい「7 メッセージ＋バンドル」規模の リグレッション検出を目的としている。
  */
 class YamlSchemaLoaderFullSchemaTest {
 
-    private val schema by lazy {
-        val resource = checkNotNull(
+  private val schema by lazy {
+    val resource =
+        checkNotNull(
             javaClass.classLoader.getResource("schemas/full-example.yaml"),
-        ) { "テストリソース schemas/full-example.yaml が見つかりません" }
-        YamlSchemaLoader().load(Paths.get(resource.toURI()))
-    }
+        ) {
+          "テストリソース schemas/full-example.yaml が見つかりません"
+        }
+    YamlSchemaLoader().load(Paths.get(resource.toURI()))
+  }
 
-    // -------------------------------------------------------------------------
-    // メッセージ総数・パス一覧
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // メッセージ総数・パス一覧
+  // -------------------------------------------------------------------------
 
-    @Test
-    fun schemaContainsSevenMessages() {
-        assertEquals(7, schema.messages.size)
-    }
+  @Test
+  fun schemaContainsSevenMessages() {
+    assertEquals(7, schema.messages.size)
+  }
 
-    @Test
-    fun allExpectedPathsExist() {
-        val paths = schema.messages.map { it.path }
-        val expected = listOf(
+  @Test
+  fun allExpectedPathsExist() {
+    val paths = schema.messages.map { it.path }
+    val expected =
+        listOf(
             "/light/color",
             "/mesh/points",
             "/transform/matrix",
@@ -49,154 +51,154 @@ class YamlSchemaLoaderFullSchemaTest {
             "/device/info",
             "/data/chunk",
         )
-        assertEquals(expected, paths)
+    assertEquals(expected, paths)
+  }
+
+  // -------------------------------------------------------------------------
+  // /light/color — 基本スカラー（INT × 3）
+  // -------------------------------------------------------------------------
+
+  @Test
+  fun lightColorParsesThreeIntScalars() {
+    val spec = assertNotNull(schema.findByPath("/light/color"))
+    assertEquals(3, spec.args.size)
+    spec.args.forEach { arg ->
+      val scalar = assertIs<ScalarArgNode>(arg)
+      assertEquals(OscType.INT, scalar.type)
+      assertEquals(ScalarRole.VALUE, scalar.role)
     }
+    assertEquals(listOf("r", "g", "b"), spec.args.map { it.name })
+  }
 
-    // -------------------------------------------------------------------------
-    // /light/color — 基本スカラー（INT × 3）
-    // -------------------------------------------------------------------------
+  // -------------------------------------------------------------------------
+  // /mesh/points — 動的長タプル配列（INT × 2 + FLOAT）
+  // -------------------------------------------------------------------------
 
-    @Test
-    fun lightColorParsesThreeIntScalars() {
-        val spec = assertNotNull(schema.findByPath("/light/color"))
-        assertEquals(3, spec.args.size)
-        spec.args.forEach { arg ->
-            val scalar = assertIs<ScalarArgNode>(arg)
-            assertEquals(OscType.INT, scalar.type)
-            assertEquals(ScalarRole.VALUE, scalar.role)
-        }
-        assertEquals(listOf("r", "g", "b"), spec.args.map { it.name })
-    }
+  @Test
+  fun meshPointsParsesLengthScalarAndDynamicTupleArray() {
+    val spec = assertNotNull(schema.findByPath("/mesh/points"))
 
-    // -------------------------------------------------------------------------
-    // /mesh/points — 動的長タプル配列（INT × 2 + FLOAT）
-    // -------------------------------------------------------------------------
+    val countArg = assertIs<ScalarArgNode>(spec.args[0])
+    assertEquals("pointCount", countArg.name)
+    assertEquals(OscType.INT, countArg.type)
+    assertEquals(ScalarRole.LENGTH, countArg.role)
 
-    @Test
-    fun meshPointsParsesLengthScalarAndDynamicTupleArray() {
-        val spec = assertNotNull(schema.findByPath("/mesh/points"))
+    val pointsArg = assertIs<ArrayArgNode>(spec.args[1])
+    assertEquals("points", pointsArg.name)
+    assertEquals("pointCount", assertIs<LengthSpec.FromField>(pointsArg.length).fieldName)
 
-        val countArg = assertIs<ScalarArgNode>(spec.args[0])
-        assertEquals("pointCount", countArg.name)
-        assertEquals(OscType.INT, countArg.type)
-        assertEquals(ScalarRole.LENGTH, countArg.role)
+    val tuple = assertIs<ArrayItemSpec.TupleItem>(pointsArg.item)
+    assertEquals(listOf("x", "y", "z"), tuple.fields.map { it.name })
+    assertEquals(listOf(OscType.INT, OscType.INT, OscType.FLOAT), tuple.fields.map { it.type })
+  }
 
-        val pointsArg = assertIs<ArrayArgNode>(spec.args[1])
-        assertEquals("points", pointsArg.name)
-        assertEquals("pointCount", assertIs<LengthSpec.FromField>(pointsArg.length).fieldName)
+  // -------------------------------------------------------------------------
+  // /transform/matrix — 固定長スカラー配列（FLOAT × 16）
+  // -------------------------------------------------------------------------
 
-        val tuple = assertIs<ArrayItemSpec.TupleItem>(pointsArg.item)
-        assertEquals(listOf("x", "y", "z"), tuple.fields.map { it.name })
-        assertEquals(listOf(OscType.INT, OscType.INT, OscType.FLOAT), tuple.fields.map { it.type })
-    }
+  @Test
+  fun transformMatrixParsesFixedLengthFloatArray() {
+    val spec = assertNotNull(schema.findByPath("/transform/matrix"))
 
-    // -------------------------------------------------------------------------
-    // /transform/matrix — 固定長スカラー配列（FLOAT × 16）
-    // -------------------------------------------------------------------------
+    val matrixArg = assertIs<ArrayArgNode>(spec.args[0])
+    assertEquals("matrix", matrixArg.name)
+    assertEquals(16, assertIs<LengthSpec.Fixed>(matrixArg.length).size)
 
-    @Test
-    fun transformMatrixParsesFixedLengthFloatArray() {
-        val spec = assertNotNull(schema.findByPath("/transform/matrix"))
+    val item = assertIs<ArrayItemSpec.ScalarItem>(matrixArg.item)
+    assertEquals(OscType.FLOAT, item.type)
+  }
 
-        val matrixArg = assertIs<ArrayArgNode>(spec.args[0])
-        assertEquals("matrix", matrixArg.name)
-        assertEquals(16, assertIs<LengthSpec.Fixed>(matrixArg.length).size)
+  // -------------------------------------------------------------------------
+  // /audio/levels — 動的長スカラー配列（FLOAT）
+  // -------------------------------------------------------------------------
 
-        val item = assertIs<ArrayItemSpec.ScalarItem>(matrixArg.item)
-        assertEquals(OscType.FLOAT, item.type)
-    }
+  @Test
+  fun audioLevelsParsesLengthScalarAndDynamicScalarArray() {
+    val spec = assertNotNull(schema.findByPath("/audio/levels"))
 
-    // -------------------------------------------------------------------------
-    // /audio/levels — 動的長スカラー配列（FLOAT）
-    // -------------------------------------------------------------------------
+    val countArg = assertIs<ScalarArgNode>(spec.args[0])
+    assertEquals("channelCount", countArg.name)
+    assertEquals(ScalarRole.LENGTH, countArg.role)
 
-    @Test
-    fun audioLevelsParsesLengthScalarAndDynamicScalarArray() {
-        val spec = assertNotNull(schema.findByPath("/audio/levels"))
+    val levelsArg = assertIs<ArrayArgNode>(spec.args[1])
+    assertEquals("levels", levelsArg.name)
+    assertEquals("channelCount", assertIs<LengthSpec.FromField>(levelsArg.length).fieldName)
 
-        val countArg = assertIs<ScalarArgNode>(spec.args[0])
-        assertEquals("channelCount", countArg.name)
-        assertEquals(ScalarRole.LENGTH, countArg.role)
+    val item = assertIs<ArrayItemSpec.ScalarItem>(levelsArg.item)
+    assertEquals(OscType.FLOAT, item.type)
+  }
 
-        val levelsArg = assertIs<ArrayArgNode>(spec.args[1])
-        assertEquals("levels", levelsArg.name)
-        assertEquals("channelCount", assertIs<LengthSpec.FromField>(levelsArg.length).fieldName)
+  // -------------------------------------------------------------------------
+  // /scene/objects — 動的長タプル配列（INT + STRING + BOOL 混在）
+  // -------------------------------------------------------------------------
 
-        val item = assertIs<ArrayItemSpec.ScalarItem>(levelsArg.item)
-        assertEquals(OscType.FLOAT, item.type)
-    }
+  @Test
+  fun sceneObjectsParsesHeterogeneousTupleFields() {
+    val spec = assertNotNull(schema.findByPath("/scene/objects"))
 
-    // -------------------------------------------------------------------------
-    // /scene/objects — 動的長タプル配列（INT + STRING + BOOL 混在）
-    // -------------------------------------------------------------------------
+    val objectsArg = assertIs<ArrayArgNode>(spec.args[1])
+    val tuple = assertIs<ArrayItemSpec.TupleItem>(objectsArg.item)
 
-    @Test
-    fun sceneObjectsParsesHeterogeneousTupleFields() {
-        val spec = assertNotNull(schema.findByPath("/scene/objects"))
+    assertEquals(listOf("id", "label", "visible"), tuple.fields.map { it.name })
+    assertEquals(
+        listOf(OscType.INT, OscType.STRING, OscType.BOOL),
+        tuple.fields.map { it.type },
+    )
+  }
 
-        val objectsArg = assertIs<ArrayArgNode>(spec.args[1])
-        val tuple = assertIs<ArrayItemSpec.TupleItem>(objectsArg.item)
+  // -------------------------------------------------------------------------
+  // /device/info — STRING と BOOL のスカラー
+  // -------------------------------------------------------------------------
 
-        assertEquals(listOf("id", "label", "visible"), tuple.fields.map { it.name })
-        assertEquals(
-            listOf(OscType.INT, OscType.STRING, OscType.BOOL),
-            tuple.fields.map { it.type },
-        )
-    }
+  @Test
+  fun deviceInfoParsesStringAndBoolScalars() {
+    val spec = assertNotNull(schema.findByPath("/device/info"))
+    assertEquals(3, spec.args.size)
 
-    // -------------------------------------------------------------------------
-    // /device/info — STRING と BOOL のスカラー
-    // -------------------------------------------------------------------------
+    val deviceId = assertIs<ScalarArgNode>(spec.args[0])
+    assertEquals(OscType.STRING, deviceId.type)
 
-    @Test
-    fun deviceInfoParsesStringAndBoolScalars() {
-        val spec = assertNotNull(schema.findByPath("/device/info"))
-        assertEquals(3, spec.args.size)
+    val connected = assertIs<ScalarArgNode>(spec.args[1])
+    assertEquals(OscType.BOOL, connected.type)
 
-        val deviceId = assertIs<ScalarArgNode>(spec.args[0])
-        assertEquals(OscType.STRING, deviceId.type)
+    val firmware = assertIs<ScalarArgNode>(spec.args[2])
+    assertEquals(OscType.STRING, firmware.type)
+  }
 
-        val connected = assertIs<ScalarArgNode>(spec.args[1])
-        assertEquals(OscType.BOOL, connected.type)
+  // -------------------------------------------------------------------------
+  // /data/chunk — BLOB 型スカラー
+  // -------------------------------------------------------------------------
 
-        val firmware = assertIs<ScalarArgNode>(spec.args[2])
-        assertEquals(OscType.STRING, firmware.type)
-    }
+  @Test
+  fun dataChunkParsesBlobScalar() {
+    val spec = assertNotNull(schema.findByPath("/data/chunk"))
 
-    // -------------------------------------------------------------------------
-    // /data/chunk — BLOB 型スカラー
-    // -------------------------------------------------------------------------
+    val payload = assertIs<ScalarArgNode>(spec.args[1])
+    assertEquals("payload", payload.name)
+    assertEquals(OscType.BLOB, payload.type)
+  }
 
-    @Test
-    fun dataChunkParsesBlobScalar() {
-        val spec = assertNotNull(schema.findByPath("/data/chunk"))
+  // -------------------------------------------------------------------------
+  // バンドル
+  // -------------------------------------------------------------------------
 
-        val payload = assertIs<ScalarArgNode>(spec.args[1])
-        assertEquals("payload", payload.name)
-        assertEquals(OscType.BLOB, payload.type)
-    }
+  @Test
+  fun schemContainsTwoBundles() {
+    assertEquals(2, schema.bundles.size)
+  }
 
-    // -------------------------------------------------------------------------
-    // バンドル
-    // -------------------------------------------------------------------------
+  @Test
+  fun lightBundleReferencesLightColor() {
+    val bundle = assertNotNull(schema.bundles.find { it.name == "LightBundle" })
+    assertEquals(listOf("/light/color"), bundle.messageRefs)
+  }
 
-    @Test
-    fun schemContainsTwoBundles() {
-        assertEquals(2, schema.bundles.size)
-    }
-
-    @Test
-    fun lightBundleReferencesLightColor() {
-        val bundle = assertNotNull(schema.bundles.find { it.name == "LightBundle" })
-        assertEquals(listOf("/light/color"), bundle.messageRefs)
-    }
-
-    @Test
-    fun sceneBundleReferencesThreeMessages() {
-        val bundle = assertNotNull(schema.bundles.find { it.name == "SceneBundle" })
-        assertEquals(
-            listOf("/mesh/points", "/transform/matrix", "/scene/objects"),
-            bundle.messageRefs,
-        )
-    }
+  @Test
+  fun sceneBundleReferencesThreeMessages() {
+    val bundle = assertNotNull(schema.bundles.find { it.name == "SceneBundle" })
+    assertEquals(
+        listOf("/mesh/points", "/transform/matrix", "/scene/objects"),
+        bundle.messageRefs,
+    )
+  }
 }

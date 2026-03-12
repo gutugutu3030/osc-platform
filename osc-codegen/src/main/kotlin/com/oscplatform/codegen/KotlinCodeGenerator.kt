@@ -31,8 +31,7 @@ class KotlinCodeGenerator {
     val packagePath = options.packageName.replace('.', '/')
     val messageFiles =
         schema.messages.associate { spec ->
-          "$packagePath/${toClassName(spec.name)}.kt" to
-              generateClass(spec, options.packageName)
+          "$packagePath/${toClassName(spec.name)}.kt" to generateClass(spec, options.packageName)
         }
     val bundleFiles =
         schema.bundles.associate { spec ->
@@ -148,8 +147,7 @@ class KotlinCodeGenerator {
         when (node) {
           is ScalarArgNode -> {
             val kt = oscTypeToKotlin(node.type)
-            appendLine(
-                "                ${node.name} = args.oscTyped<$kt>(\"${node.name}\", NAME),")
+            appendLine("                ${node.name} = args.oscTyped<$kt>(\"${node.name}\", NAME),")
           }
           is ArrayArgNode ->
               when (val item = node.item) {
@@ -245,13 +243,10 @@ class KotlinCodeGenerator {
       appendLine("import com.oscplatform.core.runtime.OscBundleCompanion")
       appendLine()
       appendLine("data class $className(")
-      params.forEach { (paramName, msgClass) ->
-        appendLine("    val $paramName: $msgClass,")
-      }
+      params.forEach { (paramName, msgClass) -> appendLine("    val $paramName: $msgClass,") }
       appendLine(") : OscBundle {")
       appendLine()
-      appendLine(
-          "    override fun toMessages(): List<Pair<String, Map<String, Any?>>> = listOf(")
+      appendLine("    override fun toMessages(): List<Pair<String, Map<String, Any?>>> = listOf(")
       params.forEach { (paramName, msgClass) ->
         appendLine("        $msgClass.NAME to $paramName.toNamedArgs(),")
       }
@@ -275,5 +270,6 @@ class KotlinCodeGenerator {
       } + "Bundle"
 
   /** クラス名をコンストラクタパラメータ名（先頭小文字化）に変換する。 */
-  private fun toParamName(className: String): String = className.replaceFirstChar { it.lowercaseChar() }
+  private fun toParamName(className: String): String =
+      className.replaceFirstChar { it.lowercaseChar() }
 }

@@ -21,9 +21,8 @@ import org.gradle.workers.WorkerExecutor
  *
  * 出力は [outputDirectory] に書き出される。ビルドキャッシュ対応済み。
  *
- * コード生成は Worker API の classloader isolation モードで実行される。
- * これにより、KTS スクリプトエンジン（kotlin-scripting-jsr223）が
- * Gradle の内部 Kotlin スクリプティング基盤と衝突しないよう classpath が分離される。
+ * コード生成は Worker API の classloader isolation モードで実行される。 これにより、KTS
+ * スクリプトエンジン（kotlin-scripting-jsr223）が Gradle の内部 Kotlin スクリプティング基盤と衝突しないよう classpath が分離される。
  */
 @CacheableTask
 abstract class GenerateOscSourcesTask : DefaultTask() {
@@ -45,9 +44,8 @@ abstract class GenerateOscSourcesTask : DefaultTask() {
 
   @TaskAction
   fun generate() {
-    val workQueue = workerExecutor.classLoaderIsolation { spec ->
-      spec.classpath.from(workerClasspath)
-    }
+    val workQueue =
+        workerExecutor.classLoaderIsolation { spec -> spec.classpath.from(workerClasspath) }
     workQueue.submit(GenerateOscSourcesWorkAction::class.java) { params ->
       params.schemaFile.set(schemaFile)
       params.packageName.set(packageName)
