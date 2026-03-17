@@ -3,6 +3,7 @@ package com.oscplatform.adapter.cli
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import kotlin.test.Test
+import kotlin.test.assertFalse
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
@@ -37,6 +38,29 @@ class CliAdapterExecuteTest {
     assertEquals(0, exitCode)
     assertTrue(outBuffer.toString().contains("osc run"))
     assertTrue(outBuffer.toString().contains("osc doc"))
+    assertTrue(outBuffer.toString().contains("osc list"))
+    assertTrue(outBuffer.toString().contains("osc validate"))
+    assertTrue(outBuffer.toString().contains("osc gen"))
+    assertTrue(outBuffer.toString().contains("osc version"))
+    assertEquals("", errBuffer.toString())
+  }
+
+  /** run --help: 戻り値 0, run 用の使い方を stdout に出力し stderr は空 */
+  @Test
+  fun executeRunHelpReturnsZeroAndPrintsRunUsage() {
+    val outBuffer = ByteArrayOutputStream()
+    val errBuffer = ByteArrayOutputStream()
+    val adapter =
+        CliAdapter(
+            out = PrintStream(outBuffer),
+            err = PrintStream(errBuffer),
+        )
+
+    val exitCode: Int = runBlocking { adapter.execute(listOf("run", "--help")) }
+
+    assertEquals(0, exitCode)
+    assertTrue(outBuffer.toString().contains("osc run"))
+    assertFalse(outBuffer.toString().contains("osc send"))
     assertEquals("", errBuffer.toString())
   }
 
@@ -77,6 +101,60 @@ class CliAdapterExecuteTest {
 
     assertEquals(1, exitCode)
     assertTrue(outBuffer.toString().contains("osc send"))
+    assertEquals("", errBuffer.toString())
+  }
+
+  /** send 単独実行: 戻り値 1, 整形されたエラーを stderr に出力し send の使い方を stdout に出力 */
+  @Test
+  fun executeSendWithoutMessageRefReturnsOneAndPrintsFormattedError() {
+    val outBuffer = ByteArrayOutputStream()
+    val errBuffer = ByteArrayOutputStream()
+    val adapter =
+        CliAdapter(
+            out = PrintStream(outBuffer),
+            err = PrintStream(errBuffer),
+        )
+
+    val exitCode: Int = runBlocking { adapter.execute(listOf("send")) }
+
+    assertEquals(1, exitCode)
+    assertTrue(errBuffer.toString().contains("error: send command needs message ref"))
+    assertTrue(outBuffer.toString().contains("osc send <messageRef>"))
+  }
+
+  /** run の未知オプション: 戻り値 1, 整形されたエラーを stderr に出力し run の使い方を stdout に出力 */
+  @Test
+  fun executeRunWithUnknownOptionReturnsOneAndPrintsFormattedError() {
+    val outBuffer = ByteArrayOutputStream()
+    val errBuffer = ByteArrayOutputStream()
+    val adapter =
+        CliAdapter(
+            out = PrintStream(outBuffer),
+            err = PrintStream(errBuffer),
+        )
+
+    val exitCode: Int = runBlocking { adapter.execute(listOf("run", "--bogus")) }
+
+    assertEquals(1, exitCode)
+    assertTrue(errBuffer.toString().contains("error: Unknown option for run: --bogus"))
+    assertTrue(outBuffer.toString().contains("osc run"))
+  }
+
+  /** version: 戻り値 0, バージョン文字列を stdout に出力 */
+  @Test
+  fun executeVersionReturnsZeroAndPrintsVersion() {
+    val outBuffer = ByteArrayOutputStream()
+    val errBuffer = ByteArrayOutputStream()
+    val adapter =
+        CliAdapter(
+            out = PrintStream(outBuffer),
+            err = PrintStream(errBuffer),
+        )
+
+    val exitCode: Int = runBlocking { adapter.execute(listOf("version")) }
+
+    assertEquals(0, exitCode)
+    assertTrue(outBuffer.toString().contains("osc-platform"))
     assertEquals("", errBuffer.toString())
   }
 }

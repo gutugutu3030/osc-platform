@@ -24,6 +24,7 @@ import java.io.PrintStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.util.Properties
+import kotlinx.coroutines.CancellationException
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
@@ -34,10 +35,30 @@ class McpAdapter(
     private val out: PrintStream = System.out,
     private val err: PrintStream = System.err,
 ) {
+  private companion object {
+    val helpFlags = setOf("help", "-h", "--help")
+  }
+
   private val schemaLoader: SchemaLoader = SchemaLoader()
 
-  suspend fun execute(args: List<String>): Int =
-      execute(args, System.`in`, System.out, UdpOscTransport(bindHost = "0.0.0.0", bindPort = 0))
+  fun commandSummary(): String =
+      "osc mcp [schemaPath] [--schema path] --host <targetHost> --port <targetPort>"
+
+  fun usageText(): String = commandSummary()
+
+  suspend fun execute(args: List<String>): Int {
+    if (args.isHelpRequest(helpFlags)) {
+      printUsage()
+      return 0
+    }
+
+    return execute(
+        args,
+        System.`in`,
+        System.out,
+        UdpOscTransport(bindHost = "0.0.0.0", bindPort = 0),
+    )
+  }
 
   internal suspend fun execute(
       args: List<String>,
@@ -45,20 +66,36 @@ class McpAdapter(
       output: OutputStream,
       transport: OscTransport,
   ): Int {
+    if (args.isHelpRequest(helpFlags)) {
+      printUsage()
+      return 0
+    }
+
     val parsed =
         try {
           parseArgs(args)
-        } catch (ex: Exception) {
+        } catch (ex: McpUsageException) {
           err.println("error: ${ex.message}")
+          printUsage()
+          return 1
+        } catch (ex: Exception) {
+          err.println("error: ${ex.message ?: "Unexpected error"}")
+          return 1
+        }
+
+    val schemaPath =
+        try {
+          resolveSchemaPath(parsed.schemaPath)
+        } catch (ex: Exception) {
+          err.println("error: ${ex.message ?: "Unexpected error"}")
           return 1
         }
 
     val schema =
         try {
-          val schemaPath = resolveSchemaPath(parsed.schemaPath)
           schemaLoader.load(schemaPath)
         } catch (ex: Exception) {
-          err.println("error: ${ex.message}")
+          err.println("error: ${ex.message ?: "Unexpected error"}")
           return 1
         }
 
@@ -93,9 +130,16 @@ class McpAdapter(
         )
 
     err.println(
-        "MCP server started schema=${parsed.schemaPath} target=${parsed.host}:${parsed.port}")
-    server.run()
-    return 0
+        "MCP server started schema=$schemaPath target=${parsed.host}:${parsed.port}")
+    return try {
+      server.run()
+      0
+    } catch (ex: CancellationException) {
+      throw ex
+    } catch (ex: Exception) {
+      err.println("error: ${ex.message ?: "Unexpected error"}")
+      1
+    }
   }
 
   private fun parseArgs(args: List<String>): McpConfig {
@@ -128,27 +172,31 @@ class McpAdapter(
         }
 
         token == "--port" -> {
-          port = args.valueAfter(index, "--port").toIntOrNull() ?: error("Invalid --port value")
+          port = args.valueAfter(index, "--port").toIntOrNull() ?: mcpUsageError("Invalid --port value")
           index += 2
         }
 
         token.startsWith("--port=") -> {
-          port = token.substringAfter('=').toIntOrNull() ?: error("Invalid --port value")
+          port = token.substringAfter('=').toIntOrNull() ?: mcpUsageError("Invalid --port value")
           index += 1
         }
 
-        token.startsWith("--") -> error("Unknown mcp option: $token")
+        token.startsWith("--") -> mcpUsageError("Unknown mcp option: $token")
         schemaPath == null -> {
           schemaPath = token
           index += 1
         }
 
-        else -> error("Unexpected token in mcp command: $token")
+        else -> mcpUsageError("Unexpected token in mcp command: $token")
       }
     }
 
-    require(!host.isNullOrBlank()) { "mcp requires --host" }
-    require(port != null) { "mcp requires --port" }
+    if (host.isNullOrBlank()) {
+      mcpUsageError("mcp requires --host")
+    }
+    if (port == null) {
+      mcpUsageError("mcp requires --port")
+    }
 
     return McpConfig(schemaPath = schemaPath, host = host, port = port)
   }
@@ -156,6 +204,10 @@ class McpAdapter(
   private fun resolveSchemaPath(explicitPath: String?): Path =
       SchemaPathResolver.resolve(
           explicitPath, warn = { message -> err.println("warning: $message") })
+
+  private fun printUsage() {
+    out.println(usageText())
+  }
 }
 
 private data class McpConfig(
@@ -602,6 +654,14 @@ private fun List<Byte>.toAsciiString(): String {
 }
 
 private fun List<String>.valueAfter(index: Int, option: String): String {
-  require(index + 1 < size) { "$option requires a value" }
+  if (index + 1 >= size) {
+    mcpUsageError("$option requires a value")
+  }
   return this[index + 1]
 }
+
+private fun List<String>.isHelpRequest(helpFlags: Set<String>): Boolean = size == 1 && first() in helpFlags
+
+private fun mcpUsageError(message: String): Nothing = throw McpUsageException(message)
+
+private class McpUsageException(message: String) : IllegalArgumentException(message)

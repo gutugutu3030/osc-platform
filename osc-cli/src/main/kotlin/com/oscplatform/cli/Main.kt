@@ -5,26 +5,31 @@ import com.oscplatform.adapter.mcp.McpAdapter
 import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 
+private val helpFlags = setOf("help", "-h", "--help")
+private val versionFlags = setOf("-V", "--version")
+
 fun main(args: Array<String>) = runBlocking {
   val cliAdapter = CliAdapter()
   val mcpAdapter = McpAdapter()
 
   val exitCode =
-      when (args.firstOrNull()) {
+      when (val command = args.firstOrNull()) {
         "mcp" -> mcpAdapter.execute(args.drop(1))
-        "help",
-        "-h",
-        "--help" -> {
-          printTopLevelUsage()
-          0
-        }
-
         null -> {
-          printTopLevelUsage()
+          printTopLevelUsage(cliAdapter, mcpAdapter)
           1
         }
-
-        else -> cliAdapter.execute(args.toList())
+        in helpFlags -> {
+          printTopLevelUsage(cliAdapter, mcpAdapter)
+          0
+        }
+        in versionFlags -> cliAdapter.execute(listOf("version"))
+        in cliAdapter.commandNames() -> cliAdapter.execute(args.toList())
+        else -> {
+          System.err.println("error: Unknown command: $command")
+          printTopLevelUsage(cliAdapter, mcpAdapter)
+          1
+        }
       }
 
   if (exitCode != 0) {
@@ -32,14 +37,17 @@ fun main(args: Array<String>) = runBlocking {
   }
 }
 
-private fun printTopLevelUsage() {
-  println(
-      """
-        osc run [schemaPath] [--schema path] [--host 0.0.0.0] [--port 9000]
-        osc send <messageRef> [--schema path] --host <targetHost> --port <targetPort> --arg value
-        osc doc [schemaPath] [--schema path] [--out build/docs/osc-schema/index.html] [--format html|markdown] [--title "OSC Schema"]
-        osc mcp [schemaPath] [--schema path] --host <targetHost> --port <targetPort>
-        """
-          .trimIndent(),
-  )
+internal fun buildTopLevelUsage(
+    cliAdapter: CliAdapter = CliAdapter(),
+    mcpAdapter: McpAdapter = McpAdapter(),
+): String =
+    buildString {
+      cliAdapter.commandSummaries().forEach { appendLine(it) }
+      appendLine(mcpAdapter.commandSummary())
+      appendLine("osc --version")
+      append("osc help")
+    }
+
+private fun printTopLevelUsage(cliAdapter: CliAdapter, mcpAdapter: McpAdapter) {
+  println(buildTopLevelUsage(cliAdapter, mcpAdapter))
 }
