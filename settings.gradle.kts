@@ -1,8 +1,10 @@
 pluginManagement {
   val kotlinVersion: String by settings
+  val shadowVersion: String by settings
   val spotlessVersion: String by settings
   plugins {
     kotlin("jvm") version kotlinVersion
+    id("com.gradleup.shadow") version shadowVersion
     id("com.diffplug.spotless") version spotlessVersion
   }
 }
