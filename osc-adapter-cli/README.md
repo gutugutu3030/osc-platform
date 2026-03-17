@@ -1,9 +1,11 @@
 # osc-adapter-cli
 
-CLI コマンド (`run` / `send` / `doc`) を実装するアダプタモジュールです。  
+CLI コマンド (`run` / `send` / `doc` / `list` / `validate` / `gen` / `version`) を実装するアダプタモジュールです。  
 エンドユーザーは [`osc-cli`](../osc-cli/README.md) 経由で利用します。このモジュールを直接実行することは想定していません。
 
 ## 提供するコマンド
+
+各サブコマンドは `--help` を受け付け、入力エラー時は `error: ...` と該当コマンドの usage を表示します。
 
 ### `run` — OSC サーバ起動
 
@@ -60,6 +62,67 @@ osc doc [schemaPath] [--schema <path>] [--out <path>] [--format html|markdown] [
 ```bash
 osc doc --schema schema.kts --out build/docs/osc-schema/index.html
 osc doc --schema schema.kts --format markdown --out docs/spec
+```
+
+### `list` — スキーマ一覧表示
+
+解決したスキーマからメッセージ名、OSC パス、引数概要、bundle 一覧を表示します。
+
+```
+osc list [schemaPath] [--schema <path>]
+```
+
+例:
+
+```bash
+osc list schema.yaml
+osc list --schema sample/kotlin-structured-bundle/schema.yaml
+```
+
+### `validate` — スキーマ検証
+
+スキーマを読み込み、構文・参照整合性を検証します。正常時は件数サマリを表示して終了します。
+
+```
+osc validate [schemaPath] [--schema <path>]
+```
+
+例:
+
+```bash
+osc validate schema.kts
+osc validate --schema sample/kotlin-structured-bundle/schema.yaml
+```
+
+### `gen` — Kotlin 型安全クラス生成
+
+スキーマから Kotlin の型安全クラスを生成します。
+
+```
+osc gen [schemaPath] [--schema <path>] --package <packageName> [--lang kotlin] [--out <path>]
+```
+
+| オプション | デフォルト | 説明 |
+|---|---|---|
+| `--schema <path>` | カレントディレクトリ自動探索 | スキーマファイルパス |
+| `--package <packageName>` | — | 生成コードの package 名（必須） |
+| `--lang <lang>` | `kotlin` | 現在は `kotlin` のみ対応 |
+| `--out <path>` | `build/generated/sources/osc` | 出力ルートディレクトリ |
+
+例:
+
+```bash
+osc gen --schema schema.yaml --package com.example.osc.generated
+osc gen schema.kts --package com.example.osc.generated --out build/generated/sources/osc
+```
+
+### `version` — バージョン表示
+
+CLI バージョンを表示します。
+
+```
+osc version
+osc --version
 ```
 
 ## 依存関係

@@ -1,6 +1,10 @@
 val coroutinesVersion: String by project
 val jacksonVersion: String by project
 
+tasks.named<ProcessResources>("processResources") {
+  filesMatching("**/version.properties") { expand("projectVersion" to project.version) }
+}
+
 dependencies {
   implementation(project(":osc-core"))
   implementation(project(":osc-transport-udp"))

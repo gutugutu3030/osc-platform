@@ -4,6 +4,9 @@ import com.oscplatform.codegen.CodeGenOptions
 import com.oscplatform.codegen.KotlinCodeGenerator
 import com.oscplatform.core.runtime.OscRuntime
 import com.oscplatform.core.runtime.OscRuntimeEvent
+import com.oscplatform.core.schema.ArrayArgNode
+import com.oscplatform.core.schema.ArrayItemSpec
+import com.oscplatform.core.schema.LengthSpec
 import com.oscplatform.core.schema.loader.SchemaLoader
 import com.oscplatform.core.schema.loader.SchemaPathResolver
 import com.oscplatform.core.transport.OscTarget
@@ -12,6 +15,8 @@ import java.io.PrintStream
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.util.Properties
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.cancelAndJoin
@@ -22,7 +27,51 @@ class CliAdapter(
     private val out: PrintStream = System.out,
     private val err: PrintStream = System.err,
 ) {
+  private companion object {
+    val helpFlags = setOf("help", "-h", "--help")
+  }
+
   private val schemaLoader: SchemaLoader = SchemaLoader()
+
+  fun commandNames(): Set<String> =
+      setOf("run", "send", "doc", "list", "validate", "gen", "version")
+
+  fun commandSummaries(): List<String> =
+      listOf(
+          runUsageLine(),
+          sendUsageLine(),
+          docUsageLine(),
+          listUsageLine(),
+          validateUsageLine(),
+          genUsageLine(),
+          versionUsageLine(),
+      )
+
+  fun usageText(): String = buildString {
+    commandSummaries().forEach { appendLine(it) }
+    appendLine()
+    append(
+        "messageRef accepts schema message name (e.g. light.color) or OSC path (e.g. /light/color).",
+    )
+  }
+
+  fun commandUsageText(command: String): String =
+      when (command) {
+        "run" -> runUsageLine()
+        "send" ->
+            buildString {
+              appendLine(sendUsageLine())
+              append(
+                  "messageRef accepts schema message name (e.g. light.color) or OSC path (e.g. /light/color).",
+              )
+            }
+        "doc" -> docUsageLine()
+        "list" -> listUsageLine()
+        "validate" -> validateUsageLine()
+        "gen" -> genUsageLine()
+        "version" -> versionUsageLine()
+        else -> usageText()
+      }
 
   suspend fun execute(args: List<String>): Int {
     if (args.isEmpty()) {
@@ -30,23 +79,87 @@ class CliAdapter(
       return 1
     }
 
-    return when (args.first()) {
-      "run" -> runServer(args.drop(1))
-      "send" -> sendMessage(args.drop(1))
-      "doc" -> generateDoc(args.drop(1))
-      "gen" -> generateCode(args.drop(1))
-      "help",
-      "-h",
-      "--help" -> {
-        printUsage()
-        0
-      }
+    val command = args.first()
+    val commandArgs = args.drop(1)
 
-      else -> {
-        err.println("Unknown command: ${args.first()}")
-        printUsage()
-        1
+    if (command in helpFlags) {
+      printUsage()
+      return 0
+    }
+
+    return try {
+      when (command) {
+        "run" -> {
+          if (commandArgs.isHelpRequest(helpFlags)) {
+            printCommandUsage(command)
+            0
+          } else {
+            runServer(commandArgs)
+          }
+        }
+        "send" -> {
+          if (commandArgs.isHelpRequest(helpFlags)) {
+            printCommandUsage(command)
+            0
+          } else {
+            sendMessage(commandArgs)
+          }
+        }
+        "doc" -> {
+          if (commandArgs.isHelpRequest(helpFlags)) {
+            printCommandUsage(command)
+            0
+          } else {
+            generateDoc(commandArgs)
+          }
+        }
+        "list" -> {
+          if (commandArgs.isHelpRequest(helpFlags)) {
+            printCommandUsage(command)
+            0
+          } else {
+            listSchema(commandArgs)
+          }
+        }
+        "validate" -> {
+          if (commandArgs.isHelpRequest(helpFlags)) {
+            printCommandUsage(command)
+            0
+          } else {
+            validateSchema(commandArgs)
+          }
+        }
+        "gen" -> {
+          if (commandArgs.isHelpRequest(helpFlags)) {
+            printCommandUsage(command)
+            0
+          } else {
+            generateCode(commandArgs)
+          }
+        }
+        "version" -> {
+          if (commandArgs.isHelpRequest(helpFlags)) {
+            printCommandUsage(command)
+            0
+          } else {
+            printVersion(commandArgs)
+          }
+        }
+        else -> {
+          err.println("error: Unknown command: $command")
+          printUsage()
+          1
+        }
       }
+    } catch (ex: CliUsageException) {
+      err.println("error: ${ex.message}")
+      printCommandUsage(command)
+      1
+    } catch (ex: CancellationException) {
+      throw ex
+    } catch (ex: Exception) {
+      err.println("error: ${ex.message ?: "Unexpected error"}")
+      1
     }
   }
 
@@ -119,10 +232,10 @@ class CliAdapter(
 
   private fun generateCode(args: List<String>): Int {
     val parsed = parseGenCommand(args)
-    require(!parsed.packageName.isNullOrBlank()) {
-      "gen requires --package." +
-          " Example: osc gen --schema schema.yaml --package com.example.generated" +
-          " --lang kotlin --out build/generated/sources/osc"
+    if (parsed.packageName.isNullOrBlank()) {
+      usageError(
+          "gen requires --package. Example: osc gen --schema schema.yaml --package com.example.generated --lang kotlin --out build/generated/sources/osc",
+      )
     }
     val schemaPath = resolveSchemaPath(parsed.schemaPath)
     val schema = schemaLoader.load(schemaPath)
@@ -130,7 +243,7 @@ class CliAdapter(
     val files =
         when (options.language) {
           "kotlin" -> KotlinCodeGenerator().generate(schema, options)
-          else -> error("Unsupported --lang: ${options.language}. Supported: kotlin")
+          else -> usageError("Unsupported --lang: ${options.language}. Supported: kotlin")
         }
     val outputRoot = Path.of(parsed.outputPath ?: "build/generated/sources/osc")
     files.forEach { (relativePath, content) ->
@@ -140,6 +253,60 @@ class CliAdapter(
       out.println("generated: $file")
     }
     out.println("gen complete: ${files.size} file(s)")
+    return 0
+  }
+
+  private fun listSchema(args: List<String>): Int {
+    val parsed = parseSchemaLookupCommand(command = "list", args = args)
+    val schemaPath = resolveSchemaPath(parsed.schemaPath)
+    val schema = schemaLoader.load(schemaPath)
+
+    out.println("schema: $schemaPath")
+    out.println("messages (${schema.messages.size}):")
+    schema.messages
+        .sortedBy { it.name }
+        .forEach { spec ->
+          val descriptionSuffix =
+              spec.description?.takeIf { it.isNotBlank() }?.let { " :: $it" } ?: ""
+          out.println("- ${spec.name} -> ${spec.path}${descriptionSuffix}")
+          if (spec.args.isNotEmpty()) {
+            out.println("  args: ${spec.args.joinToString(", ") { arg -> formatArgSummary(arg) }}")
+          }
+        }
+
+    out.println("bundles (${schema.bundles.size}):")
+    if (schema.bundles.isEmpty()) {
+      out.println("- none")
+    } else {
+      schema.bundles
+          .sortedBy { it.name }
+          .forEach { bundle ->
+            val refs =
+                bundle.messageRefs.mapNotNull { ref -> schema.resolveMessage(ref)?.name ?: ref }
+            val descriptionSuffix =
+                bundle.description?.takeIf { it.isNotBlank() }?.let { " :: $it" } ?: ""
+            out.println("- ${bundle.name} -> ${refs.joinToString(", ")}${descriptionSuffix}")
+          }
+    }
+    return 0
+  }
+
+  private fun validateSchema(args: List<String>): Int {
+    val parsed = parseSchemaLookupCommand(command = "validate", args = args)
+    val schemaPath = resolveSchemaPath(parsed.schemaPath)
+    val schema = schemaLoader.load(schemaPath)
+
+    out.println("schema valid: $schemaPath")
+    out.println("messages: ${schema.messages.size}")
+    out.println("bundles: ${schema.bundles.size}")
+    return 0
+  }
+
+  private fun printVersion(args: List<String>): Int {
+    if (args.isNotEmpty()) {
+      usageError("Unexpected token in version command: ${args.first()}")
+    }
+    out.println("osc-platform ${loadCliVersion()}")
     return 0
   }
 
@@ -185,12 +352,12 @@ class CliAdapter(
           outputPath = token.substringAfter('=')
           index += 1
         }
-        token.startsWith("--") -> error("Unknown option for gen: $token")
+        token.startsWith("--") -> usageError("Unknown option for gen: $token")
         schemaPath == null -> {
           schemaPath = token
           index += 1
         }
-        else -> error("Unexpected token in gen command: $token")
+        else -> usageError("Unexpected token in gen command: $token")
       }
     }
     return GenConfig(
@@ -231,6 +398,33 @@ class CliAdapter(
     return 0
   }
 
+  private fun parseSchemaLookupCommand(command: String, args: List<String>): SchemaLookupConfig {
+    var schemaPath: String? = null
+
+    var index = 0
+    while (index < args.size) {
+      val token = args[index]
+      when {
+        token == "--schema" -> {
+          schemaPath = args.valueAfter(index, "--schema")
+          index += 2
+        }
+        token.startsWith("--schema=") -> {
+          schemaPath = token.substringAfter('=')
+          index += 1
+        }
+        token.startsWith("--") -> usageError("Unknown option for $command: $token")
+        schemaPath == null -> {
+          schemaPath = token
+          index += 1
+        }
+        else -> usageError("Unexpected token in $command command: $token")
+      }
+    }
+
+    return SchemaLookupConfig(schemaPath = schemaPath)
+  }
+
   private fun parseRunCommand(args: List<String>): RunConfig {
     var schemaPath: String? = null
     var host = "0.0.0.0"
@@ -261,22 +455,23 @@ class CliAdapter(
         }
 
         token == "--port" -> {
-          port = args.valueAfter(index, "--port").toIntOrNull() ?: error("Invalid --port value")
+          port =
+              args.valueAfter(index, "--port").toIntOrNull() ?: usageError("Invalid --port value")
           index += 2
         }
 
         token.startsWith("--port=") -> {
-          port = token.substringAfter('=').toIntOrNull() ?: error("Invalid --port value")
+          port = token.substringAfter('=').toIntOrNull() ?: usageError("Invalid --port value")
           index += 1
         }
 
-        token.startsWith("--") -> error("Unknown option for run: $token")
+        token.startsWith("--") -> usageError("Unknown option for run: $token")
         schemaPath == null -> {
           schemaPath = token
           index += 1
         }
 
-        else -> error("Unexpected token in run command: $token")
+        else -> usageError("Unexpected token in run command: $token")
       }
     }
 
@@ -284,8 +479,10 @@ class CliAdapter(
   }
 
   private fun parseSendCommand(args: List<String>): SendConfig {
-    require(args.isNotEmpty()) {
-      "send command needs message ref. Example: osc send light.color --host 127.0.0.1 --port 9000 --r 255"
+    if (args.isEmpty()) {
+      usageError(
+          "send command needs message ref. Example: osc send light.color --host 127.0.0.1 --port 9000 --r 255",
+      )
     }
 
     val messageRef = args.first()
@@ -319,12 +516,13 @@ class CliAdapter(
         }
 
         token == "--port" -> {
-          port = args.valueAfter(index, "--port").toIntOrNull() ?: error("Invalid --port value")
+          port =
+              args.valueAfter(index, "--port").toIntOrNull() ?: usageError("Invalid --port value")
           index += 2
         }
 
         token.startsWith("--port=") -> {
-          port = token.substringAfter('=').toIntOrNull() ?: error("Invalid --port value")
+          port = token.substringAfter('=').toIntOrNull() ?: usageError("Invalid --port value")
           index += 1
         }
 
@@ -334,12 +532,16 @@ class CliAdapter(
           index += consumed
         }
 
-        else -> error("Unexpected token in send command: $token")
+        else -> usageError("Unexpected token in send command: $token")
       }
     }
 
-    require(!host.isNullOrBlank()) { "send requires --host" }
-    require(port != null) { "send requires --port" }
+    if (host.isNullOrBlank()) {
+      usageError("send requires --host")
+    }
+    if (port == null) {
+      usageError("send requires --port")
+    }
 
     return SendConfig(
         messageRef = messageRef,
@@ -400,13 +602,13 @@ class CliAdapter(
           index += 1
         }
 
-        token.startsWith("--") -> error("Unknown option for doc: $token")
+        token.startsWith("--") -> usageError("Unknown option for doc: $token")
         schemaPath == null -> {
           schemaPath = token
           index += 1
         }
 
-        else -> error("Unexpected token in doc command: $token")
+        else -> usageError("Unexpected token in doc command: $token")
       }
     }
 
@@ -419,7 +621,7 @@ class CliAdapter(
       "html" -> DocFormat.HTML
       "markdown",
       "md" -> DocFormat.MARKDOWN
-      else -> error("Unsupported --format: $raw (supported: html, markdown)")
+      else -> usageError("Unsupported --format: $raw (supported: html, markdown)")
     }
   }
 
@@ -440,7 +642,7 @@ class CliAdapter(
     val normalized = Path.of(raw).toAbsolutePath().normalize()
     val inferred = detectFormatFromOutputPath(normalized.toString())
     if (inferred != null && inferred != format) {
-      error("Output extension and --format mismatch: $normalized")
+      usageError("Output extension and --format mismatch: $normalized")
     }
 
     return if (inferred != null) {
@@ -468,12 +670,16 @@ class CliAdapter(
     if (token.contains('=')) {
       val key = token.substringAfter("--").substringBefore('=').trim()
       val value = token.substringAfter('=').trim()
-      require(key.isNotBlank()) { "Invalid argument flag: $token" }
+      if (key.isBlank()) {
+        usageError("Invalid argument flag: $token")
+      }
       return Triple(key, parseDynamicValue(value), 1)
     }
 
     val key = token.substringAfter("--").trim()
-    require(key.isNotBlank()) { "Invalid argument flag: $token" }
+    if (key.isBlank()) {
+      usageError("Invalid argument flag: $token")
+    }
     val value = args.valueAfter(index, token)
     return Triple(key, parseDynamicValue(value), 2)
   }
@@ -486,17 +692,65 @@ class CliAdapter(
       SchemaPathResolver.resolve(
           explicitPath, warn = { message -> err.println("warning: $message") })
 
-  private fun printUsage() {
-    out.println(
-        """
-            osc run [schemaPath] [--schema path] [--host 0.0.0.0] [--port 9000]
-            osc send <messageRef> [--schema path] --host <targetHost> --port <targetPort> --arg value
-            osc doc [schemaPath] [--schema path] [--out build/docs/osc-schema/index.html] [--format html|markdown] [--title "OSC Schema"]
-            osc gen [schemaPath] [--schema path] --package <packageName> [--lang kotlin] [--out build/generated/sources/osc]
+  private fun loadCliVersion(): String {
+    val props = Properties()
+    try {
+      CliAdapter::class
+          .java
+          .getResourceAsStream("/com/oscplatform/adapter/cli/version.properties")
+          ?.use { props.load(it) }
+    } catch (_: Exception) {}
+    return props.getProperty("version", "unknown")
+  }
 
-            messageRef accepts schema message name (e.g. light.color) or OSC path (e.g. /light/color).
-        """
-            .trimIndent())
+  private fun formatArgSummary(arg: com.oscplatform.core.schema.OscArgNode): String {
+    return when (arg) {
+      is com.oscplatform.core.schema.ScalarArgNode -> {
+        val roleSuffix =
+            if (arg.role == com.oscplatform.core.schema.ScalarRole.LENGTH) "[length]" else ""
+        "${arg.name}:${arg.type.name.lowercase()}$roleSuffix"
+      }
+      is ArrayArgNode -> {
+        val lengthSuffix =
+            when (val length = arg.length) {
+              is LengthSpec.Fixed -> "[${length.size}]"
+              is LengthSpec.FromField -> "[from=${length.fieldName}]"
+            }
+        val itemSummary =
+            when (val item = arg.item) {
+              is ArrayItemSpec.ScalarItem -> item.type.name.lowercase()
+              is ArrayItemSpec.TupleItem ->
+                  "tuple(${item.fields.joinToString(",") { field -> "${field.name}:${field.type.name.lowercase()}" }})"
+            }
+        "${arg.name}:array<$itemSummary>$lengthSuffix"
+      }
+    }
+  }
+
+  private fun runUsageLine(): String =
+      "osc run [schemaPath] [--schema path] [--host 0.0.0.0] [--port 9000]"
+
+  private fun sendUsageLine(): String =
+      "osc send <messageRef> [--schema path] --host <targetHost> --port <targetPort> --arg value"
+
+  private fun docUsageLine(): String =
+      "osc doc [schemaPath] [--schema path] [--out build/docs/osc-schema/index.html] [--format html|markdown] [--title \"OSC Schema\"]"
+
+  private fun listUsageLine(): String = "osc list [schemaPath] [--schema path]"
+
+  private fun validateUsageLine(): String = "osc validate [schemaPath] [--schema path]"
+
+  private fun genUsageLine(): String =
+      "osc gen [schemaPath] [--schema path] --package <packageName> [--lang kotlin] [--out build/generated/sources/osc]"
+
+  private fun versionUsageLine(): String = "osc version"
+
+  private fun printUsage() {
+    out.println(usageText())
+  }
+
+  private fun printCommandUsage(command: String) {
+    out.println(commandUsageText(command))
   }
 }
 
@@ -528,12 +782,25 @@ private data class GenConfig(
     val outputPath: String?,
 )
 
+private data class SchemaLookupConfig(
+    val schemaPath: String?,
+)
+
 private enum class DocFormat {
   HTML,
   MARKDOWN,
 }
 
 private fun List<String>.valueAfter(index: Int, option: String): String {
-  require(index + 1 < size) { "$option requires a value" }
+  if (index + 1 >= size) {
+    usageError("$option requires a value")
+  }
   return this[index + 1]
 }
+
+private fun List<String>.isHelpRequest(helpFlags: Set<String>): Boolean =
+    size == 1 && first() in helpFlags
+
+private fun usageError(message: String): Nothing = throw CliUsageException(message)
+
+private class CliUsageException(message: String) : IllegalArgumentException(message)

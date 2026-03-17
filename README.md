@@ -189,7 +189,7 @@ messages:
 
 ## スキーマ探索ルール (`--schema` 未指定時)
 
-`run` / `send` / `doc` / `mcp` すべて同じルールです。
+`run` / `send` / `doc` / `list` / `validate` / `gen` / `mcp` すべて同じルールです。
 
 1. カレントディレクトリで `schema.kts` を探す
 2. なければ `schema.yaml` を探す
@@ -219,6 +219,11 @@ gradle build :osc-cli:installDist --no-daemon
 ```bash
 ./osc-cli/build/install/osc-cli/bin/osc-cli
 ```
+
+補足:
+
+- help や各モジュール README では論理コマンド名として `osc` と表記します
+- 実際に `installDist` で生成される実行ファイル名は `osc-cli` です
 
 ## CLI 使い方
 
@@ -298,7 +303,21 @@ Markdown 出力:
 
 出力ファイルは静的ファイルなので、公開先は任意です（ローカル閲覧、社内サーバ、GitHub Pages など）。
 
-### 4) Kotlin 型安全クラスの生成
+### 4) スキーマ一覧表示 / 検証
+
+内容確認用の一覧表示:
+
+```bash
+./osc-cli/build/install/osc-cli/bin/osc-cli list schema.yaml
+```
+
+検証のみ行う場合:
+
+```bash
+./osc-cli/build/install/osc-cli/bin/osc-cli validate schema.yaml
+```
+
+### 5) Kotlin 型安全クラスの生成
 
 `osc gen` コマンドで `OscSchema` から Kotlin の data class を生成できます。
 
@@ -312,7 +331,7 @@ Markdown 出力:
 
 オプション:
 
-- `--schema <path>` (default: CWD の `schema.kts` → `schema.yaml` 順で探索)
+- `--schema <path>` (default: 上記のスキーマ探索ルールに従って自動探索)
 - `--package <packageName>` **必須**
 - `--lang <kotlin>` (default: `kotlin`)
 - `--out <path>` (default: `build/generated/sources/osc`)
@@ -335,6 +354,13 @@ data class LightColor(
             LightColor(r = args["r"] as Int, g = args["g"] as Int, b = args["b"] as Int)
     }
 }
+```
+
+### 6) バージョン確認
+
+```bash
+./osc-cli/build/install/osc-cli/bin/osc-cli version
+./osc-cli/build/install/osc-cli/bin/osc-cli --version
 ```
 
 ## Gradle プラグイン (osc-gradle-plugin)
@@ -367,12 +393,12 @@ pluginManagement {
 ```kotlin
 plugins {
     kotlin("jvm") version "2.1.20"
-    id("com.oscplatform.schema-codegen") version "0.5.0"
+    id("com.oscplatform.schema-codegen") version "0.6.0"
 }
 
 dependencies {
-    implementation("com.oscplatform:osc-core:0.5.0")
-    implementation("com.oscplatform:osc-transport-udp:0.5.0")
+    implementation("com.oscplatform:osc-core:0.6.0")
+    implementation("com.oscplatform:osc-transport-udp:0.6.0")
 }
 
 oscSchemaCodegen {

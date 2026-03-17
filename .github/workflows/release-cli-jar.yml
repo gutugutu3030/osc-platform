@@ -1,4 +1,4 @@
-name: Release CLI Jar
+name: Release CLI Artifacts
 
 on:
   push:
@@ -25,14 +25,60 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build executable jar
-        run: ./gradlew :osc-cli:shadowJar
+      - name: Run release validation tests
+        run: ./gradlew :osc-adapter-cli:test :osc-adapter-mcp:test :osc-cli:test :osc-transport-udp:test --no-daemon
+
+      - name: Build CLI artifacts
+        run: ./gradlew :osc-cli:shadowJar :osc-cli:distZip
+
+      - name: Collect release assets
+        run: |
+          mkdir -p build/release-assets
+
+          mapfile -t jar_files < <(find osc-cli/build/libs -maxdepth 1 -type f -name 'osc-cli-*.jar' ! -name '*-thin.jar' | sort)
+          mapfile -t zip_files < <(find osc-cli/build/distributions -maxdepth 1 -type f -name 'osc-cli-*.zip' ! -name 'osc-cli-shadow-*.zip' | sort)
+
+          if [[ "${#jar_files[@]}" -ne 1 ]]; then
+            echo "Expected exactly one fat jar, found ${#jar_files[@]}" >&2
+            printf '%s\n' "${jar_files[@]}" >&2
+            exit 1
+          fi
+
+          if [[ "${#zip_files[@]}" -ne 1 ]]; then
+            echo "Expected exactly one distribution zip, found ${#zip_files[@]}" >&2
+            printf '%s\n' "${zip_files[@]}" >&2
+            exit 1
+          fi
+
+          cp "${jar_files[0]}" build/release-assets/
+          cp "${zip_files[0]}" build/release-assets/
+          ls -1 build/release-assets
+
+      - name: Smoke test release artifacts
+        run: |
+          mapfile -t jar_files < <(find build/release-assets -maxdepth 1 -type f -name 'osc-cli-*.jar' | sort)
+          mapfile -t zip_files < <(find build/release-assets -maxdepth 1 -type f -name 'osc-cli-*.zip' | sort)
+
+          java -jar "${jar_files[0]}" --version
+
+          tmp_dir=$(mktemp -d)
+          trap 'rm -rf "$tmp_dir"' EXIT
+          unzip -q "${zip_files[0]}" -d "$tmp_dir"
+
+          mapfile -t cli_bins < <(find "$tmp_dir" -type f -path '*/bin/osc-cli' | sort)
+          if [[ "${#cli_bins[@]}" -ne 1 ]]; then
+            echo "Expected exactly one extracted CLI binary, found ${#cli_bins[@]}" >&2
+            printf '%s\n' "${cli_bins[@]}" >&2
+            exit 1
+          fi
+
+          "${cli_bins[0]}" --version
 
       - name: Upload workflow artifact
         uses: actions/upload-artifact@v4
         with:
-          name: osc-cli-jar-${{ github.ref_name || github.sha }}
-          path: osc-cli/build/libs/osc-cli-*.jar
+          name: osc-cli-artifacts-${{ github.ref_name || github.sha }}
+          path: build/release-assets/*
 
       - name: Publish GitHub Release asset
         if: startsWith(github.ref, 'refs/tags/')
@@ -40,10 +86,12 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           if gh release view "$GITHUB_REF_NAME" >/dev/null 2>&1; then
-            gh release upload "$GITHUB_REF_NAME" osc-cli/build/libs/osc-cli-*.jar --clobber
+            gh release upload "$GITHUB_REF_NAME" \
+              build/release-assets/* \
+              --clobber
           else
             gh release create "$GITHUB_REF_NAME" \
-              osc-cli/build/libs/osc-cli-*.jar \
+              build/release-assets/* \
               --title "$GITHUB_REF_NAME" \
               --generate-notes
           fi
