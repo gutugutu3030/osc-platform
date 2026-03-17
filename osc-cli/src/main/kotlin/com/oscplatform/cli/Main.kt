@@ -40,13 +40,12 @@ fun main(args: Array<String>) = runBlocking {
 internal fun buildTopLevelUsage(
     cliAdapter: CliAdapter = CliAdapter(),
     mcpAdapter: McpAdapter = McpAdapter(),
-): String =
-    buildString {
-      cliAdapter.commandSummaries().forEach { appendLine(it) }
-      appendLine(mcpAdapter.commandSummary())
-      appendLine("osc --version")
-      append("osc help")
-    }
+): String = buildString {
+  cliAdapter.commandSummaries().forEach { appendLine(it) }
+  appendLine(mcpAdapter.commandSummary())
+  appendLine("osc --version")
+  append("osc help")
+}
 
 private fun printTopLevelUsage(cliAdapter: CliAdapter, mcpAdapter: McpAdapter) {
   println(buildTopLevelUsage(cliAdapter, mcpAdapter))

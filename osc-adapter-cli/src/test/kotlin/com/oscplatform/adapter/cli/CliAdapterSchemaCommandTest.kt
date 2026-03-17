@@ -93,7 +93,8 @@ class CliAdapterSchemaCommandTest {
               err = PrintStream(errBuffer),
           )
 
-      val exitCode = adapter.execute(listOf("validate", "--schema", schemaFile.toAbsolutePath().toString()))
+      val exitCode =
+          adapter.execute(listOf("validate", "--schema", schemaFile.toAbsolutePath().toString()))
 
       assertEquals(0, exitCode)
       val output = outBuffer.toString()

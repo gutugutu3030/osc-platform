@@ -129,8 +129,7 @@ class McpAdapter(
             target = OscTarget(parsed.host, parsed.port),
         )
 
-    err.println(
-        "MCP server started schema=$schemaPath target=${parsed.host}:${parsed.port}")
+    err.println("MCP server started schema=$schemaPath target=${parsed.host}:${parsed.port}")
     return try {
       server.run()
       0
@@ -172,7 +171,9 @@ class McpAdapter(
         }
 
         token == "--port" -> {
-          port = args.valueAfter(index, "--port").toIntOrNull() ?: mcpUsageError("Invalid --port value")
+          port =
+              args.valueAfter(index, "--port").toIntOrNull()
+                  ?: mcpUsageError("Invalid --port value")
           index += 2
         }
 
@@ -660,7 +661,8 @@ private fun List<String>.valueAfter(index: Int, option: String): String {
   return this[index + 1]
 }
 
-private fun List<String>.isHelpRequest(helpFlags: Set<String>): Boolean = size == 1 && first() in helpFlags
+private fun List<String>.isHelpRequest(helpFlags: Set<String>): Boolean =
+    size == 1 && first() in helpFlags
 
 private fun mcpUsageError(message: String): Nothing = throw McpUsageException(message)
 

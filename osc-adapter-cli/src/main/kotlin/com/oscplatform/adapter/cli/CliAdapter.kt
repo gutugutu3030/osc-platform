@@ -33,27 +33,27 @@ class CliAdapter(
 
   private val schemaLoader: SchemaLoader = SchemaLoader()
 
-    fun commandNames(): Set<String> = setOf("run", "send", "doc", "list", "validate", "gen", "version")
+  fun commandNames(): Set<String> =
+      setOf("run", "send", "doc", "list", "validate", "gen", "version")
 
   fun commandSummaries(): List<String> =
       listOf(
           runUsageLine(),
           sendUsageLine(),
           docUsageLine(),
-        listUsageLine(),
-        validateUsageLine(),
+          listUsageLine(),
+          validateUsageLine(),
           genUsageLine(),
-        versionUsageLine(),
+          versionUsageLine(),
       )
 
-  fun usageText(): String =
-      buildString {
-        commandSummaries().forEach { appendLine(it) }
-        appendLine()
-        append(
-            "messageRef accepts schema message name (e.g. light.color) or OSC path (e.g. /light/color).",
-        )
-      }
+  fun usageText(): String = buildString {
+    commandSummaries().forEach { appendLine(it) }
+    appendLine()
+    append(
+        "messageRef accepts schema message name (e.g. light.color) or OSC path (e.g. /light/color).",
+    )
+  }
 
   fun commandUsageText(command: String): String =
       when (command) {
@@ -266,7 +266,8 @@ class CliAdapter(
     schema.messages
         .sortedBy { it.name }
         .forEach { spec ->
-          val descriptionSuffix = spec.description?.takeIf { it.isNotBlank() }?.let { " :: $it" } ?: ""
+          val descriptionSuffix =
+              spec.description?.takeIf { it.isNotBlank() }?.let { " :: $it" } ?: ""
           out.println("- ${spec.name} -> ${spec.path}${descriptionSuffix}")
           if (spec.args.isNotEmpty()) {
             out.println("  args: ${spec.args.joinToString(", ") { arg -> formatArgSummary(arg) }}")
@@ -280,8 +281,10 @@ class CliAdapter(
       schema.bundles
           .sortedBy { it.name }
           .forEach { bundle ->
-            val refs = bundle.messageRefs.mapNotNull { ref -> schema.resolveMessage(ref)?.name ?: ref }
-            val descriptionSuffix = bundle.description?.takeIf { it.isNotBlank() }?.let { " :: $it" } ?: ""
+            val refs =
+                bundle.messageRefs.mapNotNull { ref -> schema.resolveMessage(ref)?.name ?: ref }
+            val descriptionSuffix =
+                bundle.description?.takeIf { it.isNotBlank() }?.let { " :: $it" } ?: ""
             out.println("- ${bundle.name} -> ${refs.joinToString(", ")}${descriptionSuffix}")
           }
     }
@@ -452,7 +455,8 @@ class CliAdapter(
         }
 
         token == "--port" -> {
-          port = args.valueAfter(index, "--port").toIntOrNull() ?: usageError("Invalid --port value")
+          port =
+              args.valueAfter(index, "--port").toIntOrNull() ?: usageError("Invalid --port value")
           index += 2
         }
 
@@ -512,7 +516,8 @@ class CliAdapter(
         }
 
         token == "--port" -> {
-          port = args.valueAfter(index, "--port").toIntOrNull() ?: usageError("Invalid --port value")
+          port =
+              args.valueAfter(index, "--port").toIntOrNull() ?: usageError("Invalid --port value")
           index += 2
         }
 
@@ -701,7 +706,8 @@ class CliAdapter(
   private fun formatArgSummary(arg: com.oscplatform.core.schema.OscArgNode): String {
     return when (arg) {
       is com.oscplatform.core.schema.ScalarArgNode -> {
-        val roleSuffix = if (arg.role == com.oscplatform.core.schema.ScalarRole.LENGTH) "[length]" else ""
+        val roleSuffix =
+            if (arg.role == com.oscplatform.core.schema.ScalarRole.LENGTH) "[length]" else ""
         "${arg.name}:${arg.type.name.lowercase()}$roleSuffix"
       }
       is ArrayArgNode -> {
@@ -730,16 +736,14 @@ class CliAdapter(
   private fun docUsageLine(): String =
       "osc doc [schemaPath] [--schema path] [--out build/docs/osc-schema/index.html] [--format html|markdown] [--title \"OSC Schema\"]"
 
-    private fun listUsageLine(): String =
-      "osc list [schemaPath] [--schema path]"
+  private fun listUsageLine(): String = "osc list [schemaPath] [--schema path]"
 
-    private fun validateUsageLine(): String =
-      "osc validate [schemaPath] [--schema path]"
+  private fun validateUsageLine(): String = "osc validate [schemaPath] [--schema path]"
 
   private fun genUsageLine(): String =
       "osc gen [schemaPath] [--schema path] --package <packageName> [--lang kotlin] [--out build/generated/sources/osc]"
 
-    private fun versionUsageLine(): String = "osc version"
+  private fun versionUsageLine(): String = "osc version"
 
   private fun printUsage() {
     out.println(usageText())
@@ -779,7 +783,7 @@ private data class GenConfig(
 )
 
 private data class SchemaLookupConfig(
-  val schemaPath: String?,
+    val schemaPath: String?,
 )
 
 private enum class DocFormat {
@@ -794,7 +798,8 @@ private fun List<String>.valueAfter(index: Int, option: String): String {
   return this[index + 1]
 }
 
-private fun List<String>.isHelpRequest(helpFlags: Set<String>): Boolean = size == 1 && first() in helpFlags
+private fun List<String>.isHelpRequest(helpFlags: Set<String>): Boolean =
+    size == 1 && first() in helpFlags
 
 private fun usageError(message: String): Nothing = throw CliUsageException(message)
 

@@ -3,8 +3,8 @@ package com.oscplatform.adapter.cli
 import java.io.ByteArrayOutputStream
 import java.io.PrintStream
 import kotlin.test.Test
-import kotlin.test.assertFalse
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 import kotlinx.coroutines.runBlocking
 
