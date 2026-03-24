@@ -257,6 +257,18 @@ private class OscMcpServer(
           }
         }
 
+        "prompts/list" -> {
+          if (id != null) {
+            protocol.writeMessage(resultResponse(id, promptsListResult()))
+          }
+        }
+
+        "prompts/get" -> {
+          if (id != null) {
+            handlePromptsGet(id, root.path("params"))
+          }
+        }
+
         "shutdown" -> {
           if (id != null) {
             protocol.writeMessage(resultResponse(id, mapper.createObjectNode()))
@@ -336,6 +348,42 @@ private class OscMcpServer(
     }
   }
 
+  private fun promptsListResult(): ObjectNode {
+    return mapper.createObjectNode().apply {
+      val promptsNode = mapper.createArrayNode()
+      promptsNode.add(
+          mapper.createObjectNode().apply {
+            put("name", McpQueryRouter.PROMPT_NAME)
+            put("description", McpQueryRouter.PROMPT_DESCRIPTION)
+          })
+      set("prompts", promptsNode)
+    }
+  }
+
+  private fun handlePromptsGet(id: JsonNode, params: JsonNode) {
+    val name = params.path("name").stringValue() ?: ""
+    if (name != McpQueryRouter.PROMPT_NAME) {
+      protocol.writeMessage(errorResponse(id, -32602, "Unknown prompt: $name"))
+      return
+    }
+    val result =
+        mapper.createObjectNode().apply {
+          val messagesNode = mapper.createArrayNode()
+          messagesNode.add(
+              mapper.createObjectNode().apply {
+                put("role", "user")
+                set(
+                    "content",
+                    mapper.createObjectNode().apply {
+                      put("type", "text")
+                      put("text", McpQueryRouter.systemPromptText)
+                    })
+              })
+          set("messages", messagesNode)
+        }
+    protocol.writeMessage(resultResponse(id, result))
+  }
+
   private fun initializeResult(clientVersion: String? = null): ObjectNode {
     val supportedVersions = listOf("2025-03-26", "2024-11-05")
     val negotiatedVersion =
@@ -345,7 +393,10 @@ private class OscMcpServer(
       put("protocolVersion", negotiatedVersion)
       set(
           "capabilities",
-          mapper.createObjectNode().apply { set("tools", mapper.createObjectNode()) })
+          mapper.createObjectNode().apply {
+            set("tools", mapper.createObjectNode())
+            set("prompts", mapper.createObjectNode())
+          })
       set(
           "serverInfo",
           mapper.createObjectNode().apply {
