@@ -194,6 +194,10 @@ class CliAdapter(
                     "transport_error [consecutive=${e.consecutiveCount}]: ${e.cause.message}",
                 )
               }
+
+              is OscRuntimeEvent.SendStarted -> {}
+              is OscRuntimeEvent.SendSucceeded -> {}
+              is OscRuntimeEvent.SendFailed -> {}
             }
           }
         }
