@@ -1,0 +1,103 @@
+name: Copilot Feature Request
+description: Copilot に feature 実装を依頼するためのテンプレート
+title: "[Copilot Feature] "
+labels:
+  - enhancement
+  - copilot
+body:
+  - type: markdown
+    attributes:
+      value: |
+        背景、実装内容、非目標を短く具体的に書いてください。
+
+        基本ルールは repository instructions で適用されます。例外だけを書いてください。
+
+  - type: dropdown
+    id: target-modules
+    attributes:
+      label: 対象モジュール
+      description: 変更対象を選んでください。複数選択可です。
+      multiple: true
+      options:
+        - osc-core
+        - osc-transport-udp
+        - osc-adapter-cli
+        - osc-adapter-mcp
+        - osc-adapter-webui
+        - osc-cli
+        - osc-codegen
+        - osc-gradle-plugin
+        - sample
+        - docs/slides
+    validations:
+      required: true
+
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景
+      description: 必要な理由と利用場面を書いてください。
+      placeholder: |
+        例:
+        - schema 生成結果に追加メタデータを持たせたい
+        - CLI ではできるが MCP ではできない
+    validations:
+      required: true
+
+  - type: textarea
+    id: requested-change
+    attributes:
+      label: 実装してほしいこと
+      description: 実装してほしい作業を箇条書きで書いてください。
+      placeholder: |
+        例:
+        - osc-core に API を追加する
+        - osc-cli にオプションを追加する
+        - 関連 README と sample を更新する
+    validations:
+      required: true
+
+  - type: textarea
+    id: non-goals
+    attributes:
+      label: やらないこと
+      description: スコープ外を箇条書きで書いてください。
+      placeholder: |
+        例:
+        - 既存 API の全面リネームはしない
+        - Web UI の見た目変更はしない
+        - transport 層の刷新は含めない
+    validations:
+      required: true
+
+  - type: checkboxes
+    id: optional-flags
+    attributes:
+      label: 追加で依頼したいこと
+      description: 必要なものだけ選んでください。
+      options:
+        - label: 関連する sample も更新してほしい
+        - label: slides または feature.md の更新も検討してほしい
+        - label: CLI の実行例やスモーク確認まで行ってほしい
+        - label: 既存 API / schema 互換性を優先してほしい
+
+  - type: checkboxes
+    id: breaking-change
+    attributes:
+      label: 破壊的変更
+      description: 含む場合だけ選んでください。
+      options:
+        - label: この変更は破壊的変更を含む
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: 補足情報
+      description: 参考リンク、関連 issue、例外ルールがあれば書いてください。
+      placeholder: |
+        例:
+        - 参考: README の module 構成
+        - 関連 issue: #123
+        - 今回は README 更新不要。内部 refactor のみ。
+    validations:
+      required: false
