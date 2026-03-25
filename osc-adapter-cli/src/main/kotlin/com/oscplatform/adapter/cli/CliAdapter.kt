@@ -310,7 +310,7 @@ class CliAdapter(
     val schemaPath = resolveSchemaPath(parsed.schemaPath)
     val schema = schemaLoader.load(schemaPath)
     val options =
-      CodeGenOptions(packageName = requireNotNull(parsed.packageName), language = parsed.lang)
+        CodeGenOptions(packageName = requireNotNull(parsed.packageName), language = parsed.lang)
     val files =
         when (options.language) {
           "kotlin" -> KotlinCodeGenerator().generate(schema, options)
@@ -552,8 +552,7 @@ class CliAdapter(
 
         token.startsWith("--webui-port=") -> {
           webUiPort =
-              token.substringAfter('=').toIntOrNull()
-                  ?: usageError("Invalid --webui-port value")
+              token.substringAfter('=').toIntOrNull() ?: usageError("Invalid --webui-port value")
           index += 1
         }
 
@@ -640,8 +639,7 @@ class CliAdapter(
 
         token.startsWith("--webui-port=") -> {
           webUiPort =
-              token.substringAfter('=').toIntOrNull()
-                  ?: usageError("Invalid --webui-port value")
+              token.substringAfter('=').toIntOrNull() ?: usageError("Invalid --webui-port value")
           index += 1
         }
 
@@ -901,18 +899,18 @@ private data class RunConfig(
     val schemaPath: String?,
     val host: String,
     val port: Int,
-  val webUiEnabled: Boolean,
-  val webUiPort: Int,
+    val webUiEnabled: Boolean,
+    val webUiPort: Int,
 )
 
 private data class SendConfig(
-  val messageRef: String?,
+    val messageRef: String?,
     val schemaPath: String?,
     val host: String,
     val port: Int,
     val arguments: Map<String, Any?>,
-  val webUiEnabled: Boolean,
-  val webUiPort: Int,
+    val webUiEnabled: Boolean,
+    val webUiPort: Int,
 )
 
 private data class DocConfig(
