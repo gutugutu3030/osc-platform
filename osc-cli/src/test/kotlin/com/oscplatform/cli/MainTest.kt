@@ -10,10 +10,12 @@ class MainTest {
     val usage = buildTopLevelUsage()
 
     assertTrue(usage.contains("osc run"))
+    assertTrue(usage.contains("--webui"))
     assertTrue(usage.contains("osc list"))
     assertTrue(usage.contains("osc validate"))
     assertTrue(usage.contains("osc gen"))
     assertTrue(usage.contains("osc mcp"))
+    assertTrue(usage.contains("osc webui"))
     assertTrue(usage.contains("osc version"))
     assertTrue(usage.contains("osc --version"))
     assertTrue(usage.contains("osc help"))
