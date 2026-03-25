@@ -37,21 +37,48 @@ import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
 import tools.jackson.module.kotlin.KotlinModule
 
+/**
+ * MCP（Model Context Protocol）アダプター。
+ *
+ * OSCスキーマを読み込み、MCPサーバーとして標準入出力経由でツール呼び出しを処理する。
+ *
+ * @param out 通常出力用の [PrintStream]
+ * @param err エラー出力用の [PrintStream]
+ */
 class McpAdapter(
     private val out: PrintStream = System.out,
     private val err: PrintStream = System.err,
 ) {
+  /** ヘルプフラグの集合。 */
   private companion object {
     val helpFlags = setOf("help", "-h", "--help")
   }
 
   private val schemaLoader: SchemaLoader = SchemaLoader()
 
+  /**
+   * MCPサブコマンドの使用方法の概要文字列を返す。
+   *
+   * @return コマンドライン使用方法の概要
+   */
   fun commandSummary(): String =
       "osc mcp [schemaPath] [--schema path] --host <targetHost> --port <targetPort> [--webui] [--webui-port 8080]"
 
+  /**
+   * 使用方法のテキストを返す。
+   *
+   * @return 使用方法テキスト
+   */
   fun usageText(): String = commandSummary()
 
+  /**
+   * コマンドライン引数を解析し、MCPサーバーを起動する。
+   *
+   * ヘルプフラグが指定された場合は使用方法を表示して正常終了する。 標準入出力とデフォルトのUDPトランスポートを使用する。
+   *
+   * @param args コマンドライン引数リスト
+   * @return 終了コード（0: 正常終了、1: エラー）
+   */
   suspend fun execute(args: List<String>): Int {
     if (args.isHelpRequest(helpFlags)) {
       printUsage()
@@ -66,6 +93,17 @@ class McpAdapter(
     )
   }
 
+  /**
+   * 指定された入出力ストリームとトランスポートでMCPサーバーを起動する。
+   *
+   * テスト等でストリームやトランスポートを差し替えるために使用する。
+   *
+   * @param args コマンドライン引数リスト
+   * @param input JSON-RPCメッセージを受信する入力ストリーム
+   * @param output JSON-RPCメッセージを送信する出力ストリーム
+   * @param transport OSCメッセージ送信に使用するトランスポート
+   * @return 終了コード（0: 正常終了、1: エラー）
+   */
   internal suspend fun execute(
       args: List<String>,
       input: InputStream,
@@ -171,6 +209,13 @@ class McpAdapter(
     }
   }
 
+  /**
+   * コマンドライン引数を解析して [McpConfig] を返す。
+   *
+   * @param args コマンドライン引数リスト
+   * @return 解析された設定
+   * @throws McpUsageException 引数の形式が不正な場合
+   */
   private fun parseArgs(args: List<String>): McpConfig {
     var schemaPath: String? = null
     var host: String? = null
@@ -258,15 +303,31 @@ class McpAdapter(
     )
   }
 
+  /**
+   * スキーマファイルのパスを解決する。
+   *
+   * @param explicitPath 明示的に指定されたパス（省略可能）
+   * @return 解決されたスキーマファイルのパス
+   */
   private fun resolveSchemaPath(explicitPath: String?): Path =
       SchemaPathResolver.resolve(
           explicitPath, warn = { message -> err.println("warning: $message") })
 
+  /** 使用方法テキストを標準出力に表示する。 */
   private fun printUsage() {
     out.println(usageText())
   }
 }
 
+/**
+ * MCPアダプターの設定を保持するデータクラス。
+ *
+ * @param schemaPath スキーマファイルのパス（省略可能）
+ * @param host OSC送信先ホスト名
+ * @param port OSC送信先ポート番号
+ * @param webUiEnabled Web UIを有効にするかどうか
+ * @param webUiPort Web UIのHTTPポート番号
+ */
 private data class McpConfig(
     val schemaPath: String?,
     val host: String,
@@ -275,6 +336,18 @@ private data class McpConfig(
     val webUiPort: Int,
 )
 
+/**
+ * MCPプロトコルに基づくOSCサーバー。
+ *
+ * JSON-RPCメッセージを受信し、ツール呼び出しに対してOSCメッセージを送信する。
+ *
+ * @param protocol 標準入出力によるMCPプロトコル
+ * @param runtime OSCメッセージの送信を担当するランタイム
+ * @param toolByName ツール名からメッセージスペックへのマッピング
+ * @param bundleToolByName バンドルツール名から [McpBundleTool] へのマッピング
+ * @param target OSCメッセージの送信先ターゲット
+ * @param webUiEventSink Web UIイベントの送信先フロー（省略可能）
+ */
 private class OscMcpServer(
     private val protocol: McpStdioProtocol,
     private val runtime: OscRuntime,
@@ -285,6 +358,11 @@ private class OscMcpServer(
 ) {
   private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
+  /**
+   * MCPサーバーのメインループを実行する。
+   *
+   * 標準入力からJSON-RPCメッセージを読み取り、メソッドに応じた処理を行う。 入力ストリームが終了するか "exit" メソッドを受信するまでループする。
+   */
   suspend fun run() {
     while (true) {
       val messageBytes = protocol.readMessage() ?: break
@@ -334,6 +412,14 @@ private class OscMcpServer(
     }
   }
 
+  /**
+   * ツール呼び出しリクエストを処理する。
+   *
+   * 指定されたツール名に対応するOSCメッセージまたはバンドルを送信し、結果を返す。
+   *
+   * @param id JSON-RPCリクエストID
+   * @param params リクエストパラメータ（ツール名と引数を含む）
+   */
   private suspend fun handleToolCall(id: JsonNode, params: JsonNode) {
     try {
       val name = params.path("name").stringValue() ?: ""
@@ -414,6 +500,13 @@ private class OscMcpServer(
     }
   }
 
+  /**
+   * 受信したMCPリクエストのイベントをWeb UIに送信する。
+   *
+   * @param method JSON-RPCメソッド名
+   * @param id JSON-RPCリクエストID（通知の場合は null）
+   * @param params リクエストパラメータ
+   */
   private fun emitRequestEvent(method: String, id: JsonNode?, params: JsonNode) {
     val requestId = id?.toString() ?: "notification"
     val detailMap = linkedMapOf<String, Any?>("id" to requestId, "method" to method)
@@ -429,6 +522,14 @@ private class OscMcpServer(
     )
   }
 
+  /**
+   * MCPの initialize レスポンスの結果オブジェクトを生成する。
+   *
+   * クライアントが提示したバージョンがサポート対象であればそれを返し、 そうでなければ最新のサポートバージョンを返す。
+   *
+   * @param clientVersion クライアントが要求したプロトコルバージョン（省略可能）
+   * @return initialize レスポンスの結果ノード
+   */
   private fun initializeResult(clientVersion: String? = null): ObjectNode {
     val supportedVersions = listOf("2025-03-26", "2024-11-05")
     val negotiatedVersion =
@@ -448,6 +549,13 @@ private class OscMcpServer(
     }
   }
 
+  /**
+   * アダプターのバージョン文字列をリソースプロパティから読み込む。
+   *
+   * バージョンプロパティが見つからない場合は "unknown" を返す。
+   *
+   * @return バージョン文字列
+   */
   private fun loadAdapterVersion(): String {
     val props = Properties()
     try {
@@ -459,6 +567,13 @@ private class OscMcpServer(
     return props.getProperty("version", "unknown")
   }
 
+  /**
+   * MCPの tools/list レスポンスの結果オブジェクトを生成する。
+   *
+   * スキーマに定義されたメッセージおよびバンドルをツール一覧として返す。
+   *
+   * @return tools/list レスポンスの結果ノード
+   */
   private fun toolsListResult(): ObjectNode {
     return mapper.createObjectNode().apply {
       val toolsNode = mapper.createArrayNode()
@@ -486,10 +601,23 @@ private class OscMcpServer(
     }
   }
 
+  /**
+   * OSCメッセージスペックからMCPツールの入力スキーマを生成する。
+   *
+   * @param spec OSCメッセージスペック
+   * @return JSON Schema形式の入力スキーマノード
+   */
   private fun toInputSchema(spec: OscMessageSpec): ObjectNode {
     return McpSchemaJsonSupport.toInputSchema(mapper = mapper, spec = spec)
   }
 
+  /**
+   * 正常応答のJSON-RPCレスポンスノードを生成する。
+   *
+   * @param id JSON-RPCリクエストID
+   * @param result 結果オブジェクト
+   * @return JSON-RPCレスポンスノード
+   */
   private fun resultResponse(id: JsonNode, result: ObjectNode): ObjectNode {
     return mapper.createObjectNode().apply {
       put("jsonrpc", "2.0")
@@ -498,6 +626,14 @@ private class OscMcpServer(
     }
   }
 
+  /**
+   * エラー応答のJSON-RPCレスポンスノードを生成する。
+   *
+   * @param id JSON-RPCリクエストID
+   * @param code エラーコード
+   * @param message エラーメッセージ
+   * @return JSON-RPCエラーレスポンスノード
+   */
   private fun errorResponse(id: JsonNode, code: Int, message: String): ObjectNode {
     return mapper.createObjectNode().apply {
       put("jsonrpc", "2.0")
@@ -511,18 +647,48 @@ private class OscMcpServer(
     }
   }
 
+  /**
+   * [JsonNode] をKotlinの値に変換する。
+   *
+   * [McpSchemaJsonSupport.jsonNodeToValue] に委譲する。
+   *
+   * @param node 変換対象のJSONノード
+   * @return 変換されたKotlinの値（null の場合あり）
+   */
   private fun jsonNodeToValue(node: JsonNode): Any? {
     return McpSchemaJsonSupport.jsonNodeToValue(node)
   }
 }
 
+/**
+ * MCPバンドルツールの定義を保持するデータクラス。
+ *
+ * @param spec OSCバンドルスペック
+ * @param resolvedSpecs バンドルに含まれる解決済みメッセージスペックのリスト
+ * @param inputSchema ツールの入力スキーマ（JSON Schema形式）
+ */
 internal data class McpBundleTool(
     val spec: OscBundleSpec,
     val resolvedSpecs: List<OscMessageSpec>,
     val inputSchema: ObjectNode,
 )
 
+/**
+ * MCPツールのJSON Schema生成を担当するユーティリティオブジェクト。
+ *
+ * OSCスキーマの引数定義からJSON Schema形式の入力スキーマを生成する。
+ */
 internal object McpSchemaJsonSupport {
+  /**
+   * OSCバンドルスペックからMCPツールの入力スキーマを生成する。
+   *
+   * バンドル内の全メッセージのプロパティを統合した単一のJSON Schemaを返す。
+   *
+   * @param mapper JSON生成に使用する [ObjectMapper]
+   * @param bundleSpec OSCバンドルスペック
+   * @param resolvedSpecs バンドルに含まれる解決済みメッセージスペックのリスト
+   * @return JSON Schema形式の入力スキーマノード
+   */
   fun toBundleInputSchema(
       mapper: ObjectMapper,
       bundleSpec: OscBundleSpec,
@@ -547,6 +713,15 @@ internal object McpSchemaJsonSupport {
     }
   }
 
+  /**
+   * OSCメッセージスペックからMCPツールの入力スキーマを生成する。
+   *
+   * 自動導出可能な長さフィールドはrequiredから除外される。
+   *
+   * @param mapper JSON生成に使用する [ObjectMapper]
+   * @param spec OSCメッセージスペック
+   * @return JSON Schema形式の入力スキーマノード
+   */
   fun toInputSchema(mapper: ObjectMapper, spec: OscMessageSpec): ObjectNode {
     val properties = mapper.createObjectNode()
     val required = mapper.createArrayNode()
@@ -584,6 +759,15 @@ internal object McpSchemaJsonSupport {
     }
   }
 
+  /**
+   * OSC引数ノードに対応するJSON Schemaを生成する。
+   *
+   * スカラー引数と配列引数のそれぞれに適切なスキーマを返す。
+   *
+   * @param mapper JSON生成に使用する [ObjectMapper]
+   * @param arg OSC引数ノード
+   * @return JSON Schemaノード
+   */
   private fun toJsonSchemaForArg(mapper: ObjectMapper, arg: OscArgNode): ObjectNode {
     return when (arg) {
       is ScalarArgNode ->
@@ -613,6 +797,15 @@ internal object McpSchemaJsonSupport {
     }
   }
 
+  /**
+   * 配列要素の仕様に対応するJSON Schemaを生成する。
+   *
+   * スカラー要素はスカラースキーマ、タプル要素はオブジェクトスキーマとなる。
+   *
+   * @param mapper JSON生成に使用する [ObjectMapper]
+   * @param item 配列要素の仕様
+   * @return JSON Schemaノード
+   */
   private fun toJsonSchemaForArrayItem(mapper: ObjectMapper, item: ArrayItemSpec): ObjectNode {
     return when (item) {
       is ArrayItemSpec.ScalarItem -> jsonScalarSchema(mapper = mapper, type = item.type)
@@ -633,6 +826,13 @@ internal object McpSchemaJsonSupport {
     }
   }
 
+  /**
+   * OSCスカラー型に対応するJSON Schemaを生成する。
+   *
+   * @param mapper JSON生成に使用する [ObjectMapper]
+   * @param type OSCスカラー型
+   * @return JSON Schemaノード
+   */
   private fun jsonScalarSchema(mapper: ObjectMapper, type: OscType): ObjectNode {
     return when (type) {
       OscType.INT -> mapper.createObjectNode().apply { put("type", "integer") }
@@ -648,6 +848,14 @@ internal object McpSchemaJsonSupport {
     }
   }
 
+  /**
+   * [JsonNode] をKotlinの値に変換する。
+   *
+   * 文字列、数値、真偽値、配列、オブジェクト、nullのそれぞれを適切な型に変換する。
+   *
+   * @param node 変換対象のJSONノード
+   * @return 変換されたKotlinの値（null の場合あり）
+   */
   fun jsonNodeToValue(node: JsonNode): Any? {
     return when {
       node.isString -> node.stringValue()!!
@@ -666,6 +874,14 @@ internal object McpSchemaJsonSupport {
   }
 }
 
+/**
+ * MCP標準入出力プロトコルの実装。
+ *
+ * JSON-RPCメッセージをContent-Lengthヘッダ付きのフレーム形式で送受信する。
+ *
+ * @param input メッセージを受信する入力ストリーム
+ * @param output メッセージを送信する出力ストリーム
+ */
 private class McpStdioProtocol(
     input: InputStream,
     private val output: OutputStream,
@@ -673,6 +889,13 @@ private class McpStdioProtocol(
   private val input = BufferedInputStream(input)
   private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
+  /**
+   * 入力ストリームからMCPメッセージを1件読み取る。
+   *
+   * Content-Lengthヘッダを解析し、指定されたバイト数のペイロードを読み取る。 ストリームが終了した場合やContent-Lengthが不正な場合は null を返す。
+   *
+   * @return 読み取ったメッセージのバイト配列、またはストリーム終了時に null
+   */
   fun readMessage(): ByteArray? {
     var contentLength = -1
 
@@ -710,6 +933,13 @@ private class McpStdioProtocol(
     return payload
   }
 
+  /**
+   * JSON-RPCレスポンスノードをMCPフレーム形式で出力ストリームに書き込む。
+   *
+   * Content-Lengthヘッダ付きでペイロードを送信し、ストリームをフラッシュする。
+   *
+   * @param node 送信するJSON-RPCレスポンスノード
+   */
   fun writeMessage(node: ObjectNode) {
     val payload = mapper.writeValueAsBytes(node)
     val header = "Content-Length: ${payload.size}\r\n\r\n".toByteArray(StandardCharsets.US_ASCII)
@@ -718,6 +948,13 @@ private class McpStdioProtocol(
     output.flush()
   }
 
+  /**
+   * 入力ストリームからヘッダ行を1行読み取る。
+   *
+   * CRLFおよびLFの両方に対応する。ストリーム終了時に null を返す。
+   *
+   * @return 読み取ったヘッダ行の文字列、またはストリーム終了時に null
+   */
   private fun readHeaderLine(): String? {
     val bytes = ArrayList<Byte>()
     while (true) {
@@ -739,6 +976,11 @@ private class McpStdioProtocol(
   }
 }
 
+/**
+ * バイトリストをASCII文字列に変換する。
+ *
+ * @return ASCII文字列
+ */
 private fun List<Byte>.toAsciiString(): String {
   val array = ByteArray(size)
   for (index in indices) {
@@ -747,6 +989,16 @@ private fun List<Byte>.toAsciiString(): String {
   return array.toString(StandardCharsets.US_ASCII)
 }
 
+/**
+ * 指定インデックスの次の要素を取得する。
+ *
+ * 次の要素が存在しない場合はエラーを投げる。
+ *
+ * @param index 現在のインデックス
+ * @param option オプション名（エラーメッセージに使用）
+ * @return 次の要素の文字列
+ * @throws McpUsageException 次の要素が存在しない場合
+ */
 private fun List<String>.valueAfter(index: Int, option: String): String {
   if (index + 1 >= size) {
     mcpUsageError("$option requires a value")
@@ -754,9 +1006,29 @@ private fun List<String>.valueAfter(index: Int, option: String): String {
   return this[index + 1]
 }
 
+/**
+ * リストがヘルプリクエストかどうかを判定する。
+ *
+ * 要素が1つだけで、その要素がヘルプフラグに含まれる場合に true を返す。
+ *
+ * @param helpFlags ヘルプフラグの集合
+ * @return ヘルプリクエストであれば true
+ */
 private fun List<String>.isHelpRequest(helpFlags: Set<String>): Boolean =
     size == 1 && first() in helpFlags
 
+/**
+ * MCP使用方法エラーを投げるユーティリティ関数。
+ *
+ * @param message エラーメッセージ
+ * @return この関数は常に例外を投げるため、戻り値は存在しない
+ * @throws McpUsageException 常に投げられる
+ */
 private fun mcpUsageError(message: String): Nothing = throw McpUsageException(message)
 
+/**
+ * MCP引数解析時の使用方法エラーを表す例外。
+ *
+ * @param message エラーメッセージ
+ */
 private class McpUsageException(message: String) : IllegalArgumentException(message)
