@@ -16,7 +16,7 @@ class WebUiAdapter(
   private val schemaLoader = SchemaLoader()
 
   fun commandSummary(): String =
-    "osc webui [schemaPath] [--schema path] [--port 8080] [--osc-host 0.0.0.0] [--osc-port 9000] (deprecated)"
+      "osc webui [schemaPath] [--schema path] [--port 8080] [--osc-host 0.0.0.0] [--osc-port 9000] (deprecated)"
 
   suspend fun execute(args: List<String>): Int {
     if (args.firstOrNull() in setOf("help", "-h", "--help")) {
@@ -38,17 +38,17 @@ class WebUiAdapter(
       val runtime = OscRuntime(schema = schema, transport = transport)
       runtime.start()
 
-        val server =
+      val server =
           WebUiServer(
-            schema = schema,
-            runtime = runtime,
-            config =
-              WebUiServerConfig(
-                mode = WebUiMode.SENDER,
-                httpPort = config.httpPort,
-                defaultTargetHost = "127.0.0.1",
-                defaultTargetPort = config.oscPort,
-              ),
+              schema = schema,
+              runtime = runtime,
+              config =
+                  WebUiServerConfig(
+                      mode = WebUiMode.SENDER,
+                      httpPort = config.httpPort,
+                      defaultTargetHost = "127.0.0.1",
+                      defaultTargetPort = config.oscPort,
+                  ),
           )
       server.start()
 

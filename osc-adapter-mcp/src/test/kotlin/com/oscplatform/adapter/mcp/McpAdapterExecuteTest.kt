@@ -50,25 +50,25 @@ class McpAdapterExecuteTest {
 
     val exitCode =
         adapter.execute(
-          args =
-            listOf(
-              "--schema",
-              schemaPath,
-              "--host",
-              "127.0.0.1",
-              "--port",
-              "9000",
-              "--webui",
-              "--webui-port",
-              webUiPort.toString(),
-            ),
+            args =
+                listOf(
+                    "--schema",
+                    schemaPath,
+                    "--host",
+                    "127.0.0.1",
+                    "--port",
+                    "9000",
+                    "--webui",
+                    "--webui-port",
+                    webUiPort.toString(),
+                ),
             input = ByteArrayInputStream(byteArrayOf()),
             output = ByteArrayOutputStream(),
             transport = NoopTransport(),
         )
 
     assertEquals(0, exitCode)
-      assertTrue(errBuffer.toString().contains("Web UI: http://localhost:$webUiPort"))
+    assertTrue(errBuffer.toString().contains("Web UI: http://localhost:$webUiPort"))
   }
 
   @Test

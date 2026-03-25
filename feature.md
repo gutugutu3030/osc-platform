@@ -342,23 +342,26 @@ data class MeshPoints(
 
 # 外部Gradleプロジェクトからの使い方
 
+<!-- version-sync:external-gradle-usage:start -->
 ```kotlin
 plugins {
     kotlin("jvm") version "2.1.20"
-    id("com.oscplatform.schema-codegen") version "0.6.0"
+    id("com.oscplatform.schema-codegen") version "0.7.0"
 }
 
 dependencies {
-    implementation("com.oscplatform:osc-core:0.6.0")
-    implementation("com.oscplatform:osc-transport-udp:0.6.0")
+    implementation("com.oscplatform:osc-core:0.7.0")
+    implementation("com.oscplatform:osc-transport-udp:0.7.0")
 }
 
 oscSchemaCodegen {
     schema.set(layout.projectDirectory.file("schema.yaml"))
     packageName.set("com.example.osc.generated")
-    language.set("kotlin") // kotlin | java
+    language.set("kotlin")   // default: "kotlin"
+    // outputDir は省略可 (default: build/generated/sources/osc/main/kotlin)
 }
 ```
+<!-- version-sync:external-gradle-usage:end -->
 
 ---
 

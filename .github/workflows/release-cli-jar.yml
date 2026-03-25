@@ -28,6 +28,11 @@ jobs:
       - name: Run release validation tests
         run: ./gradlew :osc-adapter-cli:test :osc-adapter-mcp:test :osc-cli:test :osc-transport-udp:test --no-daemon
 
+      - name: Verify synced version references
+        run: |
+          ./gradlew syncVersionReferences --no-daemon
+          git diff --exit-code -- README.md feature.md sample/kotlin-quickstart-loopback/README.md
+
       - name: Build CLI artifacts
         run: ./gradlew :osc-cli:shadowJar :osc-cli:distZip
 
