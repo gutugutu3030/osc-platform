@@ -25,6 +25,8 @@ class KotlinCodeGenerator {
   /**
    * スキーマ全体からファイルを生成する。
    *
+   * @param schema 生成元の OSC スキーマ
+   * @param options コード生成オプション
    * @return 相対ファイルパス → ファイル内容 のマップ
    */
   fun generate(schema: OscSchema, options: CodeGenOptions): Map<String, String> {
@@ -41,7 +43,15 @@ class KotlinCodeGenerator {
     return messageFiles + bundleFiles
   }
 
-  /** 単一の [OscMessageSpec] から Kotlin クラスのソースを生成する。 テストから直接呼び出せるよう internal スコープにしていない。 */
+  /**
+   * 単一の [OscMessageSpec] から Kotlin クラスのソースを生成する。
+   *
+   * テストから直接呼び出せるよう internal スコープにしていない。
+   *
+   * @param spec 生成元のメッセージ仕様
+   * @param packageName 生成コードのパッケージ名
+   * @return Kotlin ソースコード文字列
+   */
   fun generateClass(spec: OscMessageSpec, packageName: String): String {
     val className = toClassName(spec.name)
 
@@ -177,7 +187,12 @@ class KotlinCodeGenerator {
     }
   }
 
-  /** 配列要素型の Kotlin 型名を返す。タプルの場合は nested class 名を返す。 */
+  /**
+   * 配列要素型の Kotlin 型名を返す。タプルの場合は nested class 名を返す。
+   *
+   * @param node 対象の配列引数ノード
+   * @return Kotlin の型名文字列
+   */
   private fun arrayElementTypeName(node: ArrayArgNode): String =
       when (val item = node.item) {
         is ArrayItemSpec.ScalarItem -> oscTypeToKotlin(item.type)
@@ -188,6 +203,9 @@ class KotlinCodeGenerator {
    * メッセージ名からクラス名を導出する。
    *
    * 例: `"light.color"` → `"LightColor"`, `"mesh.dual"` → `"MeshDual"`
+   *
+   * @param name メッセージ名
+   * @return PascalCase のクラス名
    */
   fun toClassName(name: String): String {
     val normalized = name.trimStart('/').replace('/', '.')
@@ -200,12 +218,21 @@ class KotlinCodeGenerator {
    * 配列フィールド名から nested data class 名を導出する。
    *
    * 例: `"points"` → `"Point"`, `"items"` → `"Item"`, `"data"` → `"Data"`
+   *
+   * @param arrayFieldName 配列フィールド名
+   * @return nested class の PascalCase 名
    */
   private fun toNestedClassName(arrayFieldName: String): String {
     val cap = arrayFieldName.replaceFirstChar { it.uppercaseChar() }
     return if (cap.length > 1 && cap.endsWith("s")) cap.dropLast(1) else cap
   }
 
+  /**
+   * [OscType] を対応する Kotlin 型名に変換する。
+   *
+   * @param type 変換対象の OSC 型
+   * @return Kotlin の型名文字列
+   */
   private fun oscTypeToKotlin(type: OscType): String =
       when (type) {
         OscType.INT -> "Int"
@@ -223,6 +250,11 @@ class KotlinCodeGenerator {
    * - 各 messageRef に対応する生成メッセージクラスをコンストラクタパラメータとして列挙
    * - [OscBundle] を実装し `toMessages()` で `List<Pair<String, Map<String, Any?>>>` を構成
    * - companion object が [OscBundleCompanion] を実装し `NAME` を提供
+   *
+   * @param spec バンドル仕様
+   * @param schema メッセージ解決に使用するスキーマ
+   * @param packageName 生成コードのパッケージ名
+   * @return Kotlin ソースコード文字列
    */
   fun generateBundle(spec: OscBundleSpec, schema: OscSchema, packageName: String): String {
     val className = toBundleClassName(spec.name)
@@ -263,13 +295,21 @@ class KotlinCodeGenerator {
    * バンドル名から Bundle クラス名を導出する。
    *
    * 例: `"set_scene"` → `"SetSceneBundle"`, `"light.setup"` → `"LightSetupBundle"`
+   *
+   * @param name バンドル名
+   * @return PascalCase の Bundle クラス名
    */
   fun toBundleClassName(name: String): String =
       name.split(Regex("[._\\-]")).joinToString("") { part ->
         part.replaceFirstChar { it.uppercaseChar() }
       } + "Bundle"
 
-  /** クラス名をコンストラクタパラメータ名（先頭小文字化）に変換する。 */
+  /**
+   * クラス名をコンストラクタパラメータ名（先頭小文字化）に変換する。
+   *
+   * @param className 変換対象のクラス名
+   * @return 先頭が小文字のパラメータ名
+   */
   private fun toParamName(className: String): String =
       className.replaceFirstChar { it.lowercaseChar() }
 }
