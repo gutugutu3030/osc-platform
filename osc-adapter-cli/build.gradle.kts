@@ -9,6 +9,7 @@ dependencies {
   implementation(project(":osc-core"))
   implementation(project(":osc-transport-udp"))
   implementation(project(":osc-codegen"))
+  implementation(project(":osc-adapter-webui"))
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
   implementation("tools.jackson.core:jackson-databind:$jacksonVersion")
   implementation("tools.jackson.module:jackson-module-kotlin:$jacksonVersion")

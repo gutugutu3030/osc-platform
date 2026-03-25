@@ -60,7 +60,26 @@ class CliAdapterExecuteTest {
 
     assertEquals(0, exitCode)
     assertTrue(outBuffer.toString().contains("osc run"))
+    assertTrue(outBuffer.toString().contains("--webui"))
     assertFalse(outBuffer.toString().contains("osc send"))
+    assertEquals("", errBuffer.toString())
+  }
+
+  @Test
+  fun executeSendHelpReturnsZeroAndPrintsWebUiUsage() {
+    val outBuffer = ByteArrayOutputStream()
+    val errBuffer = ByteArrayOutputStream()
+    val adapter =
+        CliAdapter(
+            out = PrintStream(outBuffer),
+            err = PrintStream(errBuffer),
+        )
+
+    val exitCode: Int = runBlocking { adapter.execute(listOf("send", "--help")) }
+
+    assertEquals(0, exitCode)
+    assertTrue(outBuffer.toString().contains("osc send [messageRef]"))
+    assertTrue(outBuffer.toString().contains("--webui"))
     assertEquals("", errBuffer.toString())
   }
 
@@ -119,7 +138,7 @@ class CliAdapterExecuteTest {
 
     assertEquals(1, exitCode)
     assertTrue(errBuffer.toString().contains("error: send command needs message ref"))
-    assertTrue(outBuffer.toString().contains("osc send <messageRef>"))
+    assertTrue(outBuffer.toString().contains("osc send [messageRef]"))
   }
 
   /** run の未知オプション: 戻り値 1, 整形されたエラーを stderr に出力し run の使い方を stdout に出力 */

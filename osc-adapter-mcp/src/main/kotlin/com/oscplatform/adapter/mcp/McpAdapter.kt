@@ -1,5 +1,9 @@
 package com.oscplatform.adapter.mcp
 
+import com.oscplatform.adapter.webui.WebUiLogEvent
+import com.oscplatform.adapter.webui.WebUiMode
+import com.oscplatform.adapter.webui.WebUiServer
+import com.oscplatform.adapter.webui.WebUiServerConfig
 import com.oscplatform.core.runtime.OscRuntime
 import com.oscplatform.core.schema.ArrayArgNode
 import com.oscplatform.core.schema.ArrayItemSpec
@@ -25,6 +29,8 @@ import java.nio.charset.StandardCharsets
 import java.nio.file.Path
 import java.util.Properties
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.MutableSharedFlow
+import kotlinx.coroutines.flow.asSharedFlow
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
@@ -42,7 +48,7 @@ class McpAdapter(
   private val schemaLoader: SchemaLoader = SchemaLoader()
 
   fun commandSummary(): String =
-      "osc mcp [schemaPath] [--schema path] --host <targetHost> --port <targetPort>"
+      "osc mcp [schemaPath] [--schema path] --host <targetHost> --port <targetPort> [--webui] [--webui-port 8080]"
 
   fun usageText(): String = commandSummary()
 
@@ -100,6 +106,26 @@ class McpAdapter(
         }
 
     val runtime = OscRuntime(schema = schema, transport = transport)
+    val webUiEventSink = MutableSharedFlow<WebUiLogEvent>(extraBufferCapacity = 32)
+    var webUiServer: WebUiServer? = null
+
+    if (parsed.webUiEnabled) {
+      webUiServer =
+        WebUiServer(
+          schema = schema,
+          runtime = runtime,
+          config =
+            WebUiServerConfig(
+              mode = WebUiMode.MCP,
+              httpPort = parsed.webUiPort,
+              defaultTargetHost = parsed.host,
+              defaultTargetPort = parsed.port,
+            ),
+          additionalEvents = webUiEventSink.asSharedFlow(),
+        )
+      webUiServer.start()
+      err.println("Web UI: http://localhost:${webUiServer.port}")
+    }
 
     val toolByName = schema.messages.associateBy { OscNaming.mcpToolName(it.path) }
     val bundleMapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
@@ -127,6 +153,7 @@ class McpAdapter(
             toolByName = toolByName,
             bundleToolByName = bundleToolByName,
             target = OscTarget(parsed.host, parsed.port),
+          webUiEventSink = webUiEventSink,
         )
 
     err.println("MCP server started schema=$schemaPath target=${parsed.host}:${parsed.port}")
@@ -138,6 +165,9 @@ class McpAdapter(
     } catch (ex: Exception) {
       err.println("error: ${ex.message ?: "Unexpected error"}")
       1
+    } finally {
+      webUiServer?.stop()
+      runtime.stop()
     }
   }
 
@@ -145,6 +175,8 @@ class McpAdapter(
     var schemaPath: String? = null
     var host: String? = null
     var port: Int? = null
+    var webUiEnabled = false
+    var webUiPort = 8080
 
     var index = 0
     while (index < args.size) {
@@ -182,6 +214,25 @@ class McpAdapter(
           index += 1
         }
 
+        token == "--webui" -> {
+          webUiEnabled = true
+          index += 1
+        }
+
+        token == "--webui-port" -> {
+          webUiPort =
+              args.valueAfter(index, "--webui-port").toIntOrNull()
+                  ?: mcpUsageError("Invalid --webui-port value")
+          index += 2
+        }
+
+        token.startsWith("--webui-port=") -> {
+          webUiPort =
+              token.substringAfter('=').toIntOrNull()
+                  ?: mcpUsageError("Invalid --webui-port value")
+          index += 1
+        }
+
         token.startsWith("--") -> mcpUsageError("Unknown mcp option: $token")
         schemaPath == null -> {
           schemaPath = token
@@ -199,7 +250,13 @@ class McpAdapter(
       mcpUsageError("mcp requires --port")
     }
 
-    return McpConfig(schemaPath = schemaPath, host = host, port = port)
+    return McpConfig(
+      schemaPath = schemaPath,
+      host = host,
+      port = port,
+      webUiEnabled = webUiEnabled,
+      webUiPort = webUiPort,
+    )
   }
 
   private fun resolveSchemaPath(explicitPath: String?): Path =
@@ -215,6 +272,8 @@ private data class McpConfig(
     val schemaPath: String?,
     val host: String,
     val port: Int,
+  val webUiEnabled: Boolean,
+  val webUiPort: Int,
 )
 
 private class OscMcpServer(
@@ -223,6 +282,7 @@ private class OscMcpServer(
     private val toolByName: Map<String, OscMessageSpec>,
     private val bundleToolByName: Map<String, McpBundleTool> = emptyMap(),
     private val target: OscTarget,
+  private val webUiEventSink: MutableSharedFlow<WebUiLogEvent>? = null,
 ) {
   private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
@@ -232,6 +292,7 @@ private class OscMcpServer(
       val root = mapper.readTree(messageBytes)
       val method = root.path("method").stringValue() ?: ""
       val id = root.get("id")
+      emitRequestEvent(method = method, id = id, params = root.path("params"))
 
       when (method) {
         "initialize" -> {
@@ -308,6 +369,12 @@ private class OscMcpServer(
                   })
               set("content", content)
             }
+            webUiEventSink?.tryEmit(
+              WebUiLogEvent(
+                type = "mcp_success",
+                message = "$name -> ${target.host}:${target.port}",
+              ),
+            )
         protocol.writeMessage(resultResponse(id, result))
         return
       }
@@ -330,10 +397,37 @@ private class OscMcpServer(
                 })
             set("content", content)
           }
+      webUiEventSink?.tryEmit(
+          WebUiLogEvent(
+              type = "mcp_success",
+              message = "$name -> ${target.host}:${target.port}",
+          ),
+      )
       protocol.writeMessage(resultResponse(id, result))
     } catch (ex: Exception) {
+      webUiEventSink?.tryEmit(
+          WebUiLogEvent(
+              type = "mcp_failure",
+              message = ex.message ?: "Tool call failed",
+          ),
+      )
       protocol.writeMessage(errorResponse(id, -32000, ex.message ?: "Tool call failed"))
     }
+  }
+
+  private fun emitRequestEvent(method: String, id: JsonNode?, params: JsonNode) {
+    val requestId = id?.toString() ?: "notification"
+    val detailMap = linkedMapOf<String, Any?>("id" to requestId, "method" to method)
+    if (!params.isMissingNode && !params.isNull) {
+      detailMap["params"] = jsonNodeToValue(params)
+    }
+    webUiEventSink?.tryEmit(
+        WebUiLogEvent(
+            type = "mcp_request",
+            message = "$method ($requestId)",
+            details = detailMap,
+        ),
+    )
   }
 
   private fun initializeResult(clientVersion: String? = null): ObjectNode {

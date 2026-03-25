@@ -12,7 +12,7 @@ CLI コマンド (`run` / `send` / `doc` / `list` / `validate` / `gen` / `versio
 スキーマを読み込み、UDP で OSC パケットを待ち受けます。受信イベントを標準出力に表示します。
 
 ```
-osc run [schemaPath] [--schema <path>] [--host <bindHost>] [--port <bindPort>]
+osc run [schemaPath] [--schema <path>] [--host <bindHost>] [--port <bindPort>] [--webui] [--webui-port <port>]
 ```
 
 | オプション | デフォルト | 説明 |
@@ -20,20 +20,30 @@ osc run [schemaPath] [--schema <path>] [--host <bindHost>] [--port <bindPort>]
 | `--schema <path>` | カレントディレクトリ自動探索 | スキーマファイルパス |
 | `--host <host>` | `0.0.0.0` | バインドホスト |
 | `--port <port>` | `9000` | バインドポート |
+| `--webui` | `false` | 受信イベントを監視する Web UI を併用起動 |
+| `--webui-port <port>` | `8080` | Web UI の HTTP ポート |
+
+例:
+
+```bash
+osc run schema.yaml --webui --webui-port 19080
+```
 
 ### `send` — OSC メッセージ送信
 
 スキーマを読み込み、指定先へ OSC メッセージを 1 件送信します。
 
 ```
-osc send <messageRef> [--schema <path>] --host <targetHost> --port <targetPort> --<arg> <value> ...
+osc send [messageRef] [--schema <path>] [--host <targetHost>] [--port <targetPort>] [--webui] [--webui-port <port>] --<arg> <value> ...
 ```
 
 | オプション | 説明 |
 |---|---|
 | `<messageRef>` | `light.color` または `/light/color` |
-| `--host <host>` | 送信先ホスト（必須） |
-| `--port <port>` | 送信先ポート（必須） |
+| `--host <host>` | 送信先ホスト。通常送信では必須、`--webui` 時は既定値 `127.0.0.1` |
+| `--port <port>` | 送信先ポート。通常送信では必須、`--webui` 時は既定値 `9000` |
+| `--webui` | 即送信せず、送信フォーム付き Web UI を起動 |
+| `--webui-port <port>` | Web UI の HTTP ポート |
 | `--<argName> <value>` | 引数。JSON 形式 `{...}` / `[...]` も指定可能 |
 
 例:
@@ -41,7 +51,10 @@ osc send <messageRef> [--schema <path>] --host <targetHost> --port <targetPort> 
 ```bash
 osc send light.color --host 127.0.0.1 --port 9000 --r 255 --g 0 --b 0
 osc send mesh.points --host 127.0.0.1 --port 9000 --pointCount 2 --points '[{"x":1,"y":2,"z":3.0}]'
+osc send light.color --host 127.0.0.1 --port 9000 --webui
 ```
+
+`--webui` を付けると CLI は即送信しません。`messageRef` と引数は UI の初期値として使われます。
 
 ### `doc` — スキーマ仕様書生成
 
@@ -130,6 +143,7 @@ osc --version
 ```
 osc-adapter-cli
 ├── osc-core
+├── osc-adapter-webui
 ├── osc-transport-udp
 └── kotlinx-coroutines-core
 ```

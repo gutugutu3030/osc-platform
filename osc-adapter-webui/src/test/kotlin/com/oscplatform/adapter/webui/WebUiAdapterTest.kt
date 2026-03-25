@@ -21,6 +21,7 @@ class WebUiAdapterTest {
   fun commandSummaryContainsWebuiKeyword() {
     val adapter = WebUiAdapter()
     assertTrue(adapter.commandSummary().contains("osc webui"))
+    assertTrue(adapter.commandSummary().contains("deprecated"))
   }
 
   @Test

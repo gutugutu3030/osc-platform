@@ -24,29 +24,69 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 
+enum class WebUiMode {
+  MONITOR,
+  SENDER,
+  MCP,
+}
+
+data class WebUiServerConfig(
+    val mode: WebUiMode,
+    val httpPort: Int,
+    val defaultTargetHost: String = "127.0.0.1",
+    val defaultTargetPort: Int = 9000,
+    val initialMessageRef: String? = null,
+    val initialArgs: Map<String, Any?> = emptyMap(),
+)
+
+data class WebUiLogEvent(
+    val type: String,
+    val message: String,
+    val details: Map<String, Any?> = emptyMap(),
+)
+
 class WebUiServer(
     private val schema: OscSchema,
     private val runtime: OscRuntime,
-    val port: Int,
+    private val config: WebUiServerConfig,
+    private val additionalEvents: Flow<WebUiLogEvent> = emptyFlow(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
+  val port: Int
+    get() = config.httpPort
+
   private var httpServer: HttpServer? = null
   private val sseClients = CopyOnWriteArrayList<SseClient>()
   private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
   fun start() {
-    val server = HttpServer.create(InetSocketAddress(port), 0)
+    val server = HttpServer.create(InetSocketAddress(config.httpPort), 0)
     server.createContext("/") { exchange -> dispatch(exchange) }
     server.executor = Executors.newVirtualThreadPerTaskExecutor()
     server.start()
     httpServer = server
 
-    scope.launch { runtime.events.collect { event -> broadcastEvent(event) } }
+    scope.launch { runtime.events.collect { event -> broadcastJson(serializeRuntimeEvent(event)) } }
+    scope.launch {
+      additionalEvents.collect { event ->
+        broadcastJson(
+            toJson(
+                mapOf(
+                    "type" to event.type,
+                    "message" to event.message,
+                    "details" to event.details,
+                ),
+            ),
+        )
+      }
+    }
   }
 
   fun stop() {
@@ -106,6 +146,7 @@ class WebUiServer(
             "placeholder" to scalarPlaceholder(arg.type),
         )
       }
+
       is ArrayArgNode -> {
         val lengthLabel =
             when (val len = arg.length) {
@@ -148,7 +189,19 @@ class WebUiServer(
         OscType.BLOB -> "base64"
       }
 
+  private fun sendingEnabled(): Boolean = config.mode != WebUiMode.MONITOR
+
   private fun handleSend(exchange: HttpExchange) {
+    if (!sendingEnabled()) {
+      sendResponse(
+          exchange,
+          403,
+          "application/json",
+          toJson(mapOf("success" to false, "error" to "send is disabled in monitor mode")),
+      )
+      return
+    }
+
     val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
     val req = mapper.readValue(body, Map::class.java)
     val messageRef = req["messageRef"] as? String
@@ -195,6 +248,7 @@ class WebUiServer(
 
     val client = SseClient(PrintWriter(exchange.responseBody, true))
     sseClients.add(client)
+    client.send("data: ${toJson(mapOf("type" to "connected"))}\n\n")
 
     try {
       client.writeLoop()
@@ -206,8 +260,7 @@ class WebUiServer(
     }
   }
 
-  private fun broadcastEvent(event: OscRuntimeEvent) {
-    val json = serializeEvent(event)
+  private fun broadcastJson(json: String) {
     val sseData = "data: $json\n\n"
     val deadClients = mutableListOf<SseClient>()
     sseClients.forEach { client ->
@@ -218,7 +271,7 @@ class WebUiServer(
     sseClients.removeAll(deadClients)
   }
 
-  private fun serializeEvent(event: OscRuntimeEvent): String =
+  private fun serializeRuntimeEvent(event: OscRuntimeEvent): String =
       when (event) {
         is OscRuntimeEvent.Received ->
             toJson(
@@ -226,41 +279,59 @@ class WebUiServer(
                     "type" to "received",
                     "path" to event.spec.path,
                     "args" to event.namedArgs,
-                ))
+                ),
+            )
+
         is OscRuntimeEvent.ValidationError ->
             toJson(
                 mapOf(
                     "type" to "validation_error",
                     "address" to event.address,
                     "reason" to event.reason,
-                ))
+                ),
+            )
+
         is OscRuntimeEvent.TransportErrorEvent ->
             toJson(
                 mapOf(
                     "type" to "transport_error",
                     "message" to event.error.cause.message,
-                ))
+                ),
+            )
+
         is OscRuntimeEvent.SendStarted ->
             toJson(
                 mapOf(
                     "type" to "send_started",
                     "messageRef" to event.messageRef,
                     "args" to event.args,
-                ))
+                    "targetHost" to event.target.host,
+                    "targetPort" to event.target.port,
+                ),
+            )
+
         is OscRuntimeEvent.SendSucceeded ->
             toJson(
                 mapOf(
                     "type" to "send_succeeded",
                     "messageRef" to event.messageRef,
                     "args" to event.args,
-                ))
+                    "targetHost" to event.target.host,
+                    "targetPort" to event.target.port,
+                ),
+            )
+
         is OscRuntimeEvent.SendFailed ->
             toJson(
                 mapOf(
                     "type" to "send_failed",
                     "messageRef" to event.messageRef,
                     "error" to event.cause.message,
-                ))
+                    "args" to event.args,
+                    "targetHost" to event.target.host,
+                    "targetPort" to event.target.port,
+                ),
+            )
       }
 
   private fun sendResponse(exchange: HttpExchange, status: Int, contentType: String, body: String) {
@@ -275,19 +346,29 @@ class WebUiServer(
   private fun buildHtml(): String {
     val messagesJs =
         schema.messages.joinToString(",\n") { spec ->
-          val argsJs =
-              spec.args.joinToString(",\n") { arg ->
-                val json = toJson(buildArgJson(arg))
-                json
-              }
+          val argsJs = spec.args.joinToString(",\n") { arg -> toJson(buildArgJson(arg)) }
           """{"path":${toJson(spec.path)},"name":${toJson(spec.name)},"description":${toJson(spec.description ?: "")},"args":[$argsJs]}"""
         }
+
+    val title =
+        when (config.mode) {
+          WebUiMode.MONITOR -> "OSC Monitor"
+          WebUiMode.SENDER -> "OSC Sender"
+          WebUiMode.MCP -> "OSC MCP Console"
+        }
+    val subtitle =
+        when (config.mode) {
+          WebUiMode.MONITOR -> "Receive OSC traffic and inspect the schema."
+          WebUiMode.SENDER -> "Select a message and send it to an OSC target."
+          WebUiMode.MCP -> "Inspect MCP requests while testing OSC sends from the browser."
+        }
+
     return """
 <!DOCTYPE html>
 <html lang="en">
 <head>
   <meta charset="utf-8">
-  <title>OSC Web UI</title>
+  <title>$title</title>
   <style>
     * { box-sizing: border-box; margin: 0; padding: 0; }
     body { font-family: 'Courier New', monospace; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
@@ -327,6 +408,7 @@ class WebUiServer(
     .log-send-ok { color: #93c5fd; }
     .log-send-fail, .log-error { color: #f87171; }
     .log-conn { color: #a78bfa; }
+    .log-mcp { color: #fbbf24; }
     .log-time { color: #475569; margin-right: 6px; }
     #clear-btn { background: none; border: none; color: #64748b; cursor: pointer; font-size: 11px; font-family: inherit; }
     #clear-btn:hover { color: #94a3b8; }
@@ -334,7 +416,8 @@ class WebUiServer(
 </head>
 <body>
   <header>
-    <h1>OSC Web UI</h1>
+    <h1>$title</h1>
+    <p>$subtitle</p>
     <p id="schema-label">Loading schema...</p>
   </header>
   <div class="main-container">
@@ -343,20 +426,20 @@ class WebUiServer(
       <div id="message-items">Loading...</div>
     </div>
     <div id="form-panel">
-      <div id="placeholder">&#8592; Select a message to send</div>
+      <div id="placeholder">&#8592; Select a message to inspect</div>
       <div id="send-form" style="display:none">
         <h2 id="form-name"></h2>
         <div class="msg-detail-path" id="form-path"></div>
         <div class="msg-detail-desc" id="form-desc"></div>
         <div id="form-fields"></div>
-        <div class="target-row">
+        <div class="target-row" id="target-row">
           <div class="field-group">
             <div class="field-label">Target Host</div>
-            <input type="text" id="target-host" class="field-input" value="127.0.0.1">
+            <input type="text" id="target-host" class="field-input">
           </div>
           <div class="field-group">
             <div class="field-label">Target Port</div>
-            <input type="number" id="target-port" class="field-input" value="9000">
+            <input type="number" id="target-port" class="field-input">
           </div>
         </div>
         <button id="send-btn" onclick="sendMessage()">Send</button>
@@ -374,10 +457,21 @@ class WebUiServer(
   <script>
     var schema = {messages: [$messagesJs]};
     var selectedMessage = null;
+    var uiConfig = {
+      mode: ${toJson(config.mode.name.lowercase())},
+      allowSend: ${toJson(sendingEnabled())},
+      defaultTargetHost: ${toJson(config.defaultTargetHost)},
+      defaultTargetPort: ${toJson(config.defaultTargetPort)},
+      initialMessageRef: ${toJson(config.initialMessageRef)},
+      initialArgs: ${toJson(config.initialArgs)}
+    };
 
     (function init() {
       document.getElementById('schema-label').textContent = schema.messages.length + ' messages';
+      document.getElementById('target-host').value = uiConfig.defaultTargetHost;
+      document.getElementById('target-port').value = uiConfig.defaultTargetPort;
       renderMessageList(schema.messages);
+      applyInitialSelection();
     })();
 
     function renderMessageList(messages) {
@@ -386,10 +480,26 @@ class WebUiServer(
       messages.forEach(function(msg) {
         var item = document.createElement('div');
         item.className = 'msg-item';
+        item.dataset.messageName = msg.name;
+        item.dataset.messagePath = msg.path;
         item.innerHTML = '<div class="msg-path">' + esc(msg.path) + '</div><div class="msg-name">' + esc(msg.name) + '</div>';
         item.onclick = function() { selectMessage(msg, item); };
         container.appendChild(item);
       });
+    }
+
+    function applyInitialSelection() {
+      if (!uiConfig.initialMessageRef) return;
+      var initialItem = Array.prototype.find.call(document.querySelectorAll('.msg-item'), function(item) {
+        return item.dataset.messageName === uiConfig.initialMessageRef || item.dataset.messagePath === uiConfig.initialMessageRef;
+      });
+      if (!initialItem) return;
+      var message = schema.messages.find(function(msg) {
+        return msg.name === initialItem.dataset.messageName || msg.path === initialItem.dataset.messagePath;
+      });
+      if (message) {
+        selectMessage(message, initialItem);
+      }
     }
 
     function selectMessage(msg, element) {
@@ -407,6 +517,8 @@ class WebUiServer(
       document.getElementById('form-path').textContent = msg.path;
       document.getElementById('form-desc').textContent = msg.description || '';
       document.getElementById('send-result').style.display = 'none';
+      document.getElementById('target-row').style.display = uiConfig.allowSend ? 'flex' : 'none';
+      document.getElementById('send-btn').style.display = uiConfig.allowSend ? 'inline-block' : 'none';
 
       var fields = document.getElementById('form-fields');
       fields.innerHTML = '';
@@ -423,13 +535,25 @@ class WebUiServer(
         input.id = 'arg-' + arg.name;
         input.placeholder = arg.placeholder || '';
         if (arg.inputType === 'number') { input.step = 'any'; }
+        var initialValue = formatInitialValue(arg.name);
+        if (initialValue !== null) { input.value = initialValue; }
         group.appendChild(input);
         fields.appendChild(group);
       });
     }
 
+    function formatInitialValue(argName) {
+      if (!uiConfig.initialArgs || !(argName in uiConfig.initialArgs)) {
+        return null;
+      }
+      var value = uiConfig.initialArgs[argName];
+      if (value === null || value === undefined) return '';
+      if (typeof value === 'object') return JSON.stringify(value);
+      return String(value);
+    }
+
     function sendMessage() {
-      if (!selectedMessage) return;
+      if (!selectedMessage || !uiConfig.allowSend) return;
       var args = {};
       selectedMessage.args.forEach(function(arg) {
         var input = document.getElementById('arg-' + arg.name);
@@ -454,7 +578,7 @@ class WebUiServer(
           result.className = 'result-err';
           result.textContent = '\u2717 ' + (data.error || 'Send failed');
         }
-      }).catch(function(e) {
+      }).catch(function() {
         var result = document.getElementById('send-result');
         result.style.display = 'block';
         result.className = 'result-err';
@@ -500,15 +624,21 @@ class WebUiServer(
         case 'received':
           addLog('log-recv', 'recv ' + event.path + ' ' + JSON.stringify(event.args)); break;
         case 'send_started':
-          addLog('log-send-start', '\u2192 sending ' + event.messageRef); break;
+          addLog('log-send-start', '\u2192 sending ' + event.messageRef + ' to ' + event.targetHost + ':' + event.targetPort); break;
         case 'send_succeeded':
-          addLog('log-send-ok', '\u2713 sent ' + event.messageRef); break;
+          addLog('log-send-ok', '\u2713 sent ' + event.messageRef + ' to ' + event.targetHost + ':' + event.targetPort); break;
         case 'send_failed':
           addLog('log-send-fail', '\u2717 failed ' + event.messageRef + ': ' + event.error); break;
         case 'validation_error':
           addLog('log-error', 'validation error ' + (event.address || '-') + ': ' + event.reason); break;
         case 'transport_error':
           addLog('log-error', 'transport error: ' + event.message); break;
+        case 'mcp_request':
+          addLog('log-mcp', 'mcp request ' + event.message); break;
+        case 'mcp_success':
+          addLog('log-mcp', 'mcp success ' + event.message); break;
+        case 'mcp_failure':
+          addLog('log-error', 'mcp failure ' + event.message); break;
       }
     };
     evtSource.onerror = function() {
@@ -517,8 +647,7 @@ class WebUiServer(
   </script>
 </body>
 </html>
-"""
-        .trimIndent()
+""".trimIndent()
   }
 }
 
@@ -530,8 +659,6 @@ private class SseClient(private val writer: PrintWriter) {
   }
 
   fun writeLoop() {
-    writer.print("data: {\"type\":\"connected\"}\n\n")
-    writer.flush()
     while (true) {
       val data = queue.poll(5, TimeUnit.SECONDS)
       if (data != null) {

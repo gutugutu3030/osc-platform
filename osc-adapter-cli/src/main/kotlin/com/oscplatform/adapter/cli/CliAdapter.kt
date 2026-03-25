@@ -1,5 +1,8 @@
 package com.oscplatform.adapter.cli
 
+import com.oscplatform.adapter.webui.WebUiMode
+import com.oscplatform.adapter.webui.WebUiServer
+import com.oscplatform.adapter.webui.WebUiServerConfig
 import com.oscplatform.codegen.CodeGenOptions
 import com.oscplatform.codegen.KotlinCodeGenerator
 import com.oscplatform.core.runtime.OscRuntime
@@ -170,11 +173,27 @@ class CliAdapter(
 
     val transport = UdpOscTransport(bindHost = parsed.host, bindPort = parsed.port)
     val runtime = OscRuntime(schema = schema, transport = transport)
+    var webUiServer: WebUiServer? = null
 
     runtime.start()
     out.println("OSC runtime started")
     out.println("schema: $schemaPath")
     out.println("bind: ${parsed.host}:${parsed.port}")
+
+    if (parsed.webUiEnabled) {
+      webUiServer =
+          WebUiServer(
+              schema = schema,
+              runtime = runtime,
+              config =
+                  WebUiServerConfig(
+                      mode = WebUiMode.MONITOR,
+                      httpPort = parsed.webUiPort,
+                  ),
+          )
+      webUiServer.start()
+      out.println("Web UI: http://localhost:${webUiServer.port}")
+    }
 
     val eventJob =
         kotlinx.coroutines.CoroutineScope(Dispatchers.IO).launch {
@@ -204,13 +223,19 @@ class CliAdapter(
 
     Runtime.getRuntime()
         .addShutdownHook(
-            Thread { runBlocking { runtime.stop() } },
+            Thread {
+              runBlocking {
+                webUiServer?.stop()
+                runtime.stop()
+              }
+            },
         )
 
     try {
       awaitCancellation()
     } finally {
       eventJob.cancelAndJoin()
+      webUiServer?.stop()
       runtime.stop()
     }
   }
@@ -222,8 +247,49 @@ class CliAdapter(
 
     val transport = UdpOscTransport(bindHost = "0.0.0.0", bindPort = 0)
     val runtime = OscRuntime(schema = schema, transport = transport)
+
+    if (parsed.webUiEnabled) {
+      val server =
+          WebUiServer(
+              schema = schema,
+              runtime = runtime,
+              config =
+                  WebUiServerConfig(
+                      mode = WebUiMode.SENDER,
+                      httpPort = parsed.webUiPort,
+                      defaultTargetHost = parsed.host,
+                      defaultTargetPort = parsed.port,
+                      initialMessageRef = parsed.messageRef,
+                      initialArgs = parsed.arguments,
+                  ),
+          )
+      server.start()
+
+      out.println("OSC send Web UI started")
+      out.println("schema: $schemaPath")
+      out.println("target default: ${parsed.host}:${parsed.port}")
+      out.println("Web UI: http://localhost:${server.port}")
+
+      Runtime.getRuntime()
+          .addShutdownHook(
+              Thread {
+                runBlocking {
+                  server.stop()
+                  runtime.stop()
+                }
+              },
+          )
+
+      try {
+        awaitCancellation()
+      } finally {
+        server.stop()
+        runtime.stop()
+      }
+    }
+
     runtime.send(
-        messageRef = parsed.messageRef,
+        messageRef = requireNotNull(parsed.messageRef),
         rawArgs = parsed.arguments,
         target = OscTarget(host = parsed.host, port = parsed.port),
     )
@@ -243,7 +309,8 @@ class CliAdapter(
     }
     val schemaPath = resolveSchemaPath(parsed.schemaPath)
     val schema = schemaLoader.load(schemaPath)
-    val options = CodeGenOptions(packageName = parsed.packageName!!, language = parsed.lang)
+    val options =
+      CodeGenOptions(packageName = requireNotNull(parsed.packageName), language = parsed.lang)
     val files =
         when (options.language) {
           "kotlin" -> KotlinCodeGenerator().generate(schema, options)
@@ -433,6 +500,8 @@ class CliAdapter(
     var schemaPath: String? = null
     var host = "0.0.0.0"
     var port = 9000
+    var webUiEnabled = false
+    var webUiPort = 8080
 
     var index = 0
     while (index < args.size) {
@@ -469,6 +538,25 @@ class CliAdapter(
           index += 1
         }
 
+        token == "--webui" -> {
+          webUiEnabled = true
+          index += 1
+        }
+
+        token == "--webui-port" -> {
+          webUiPort =
+              args.valueAfter(index, "--webui-port").toIntOrNull()
+                  ?: usageError("Invalid --webui-port value")
+          index += 2
+        }
+
+        token.startsWith("--webui-port=") -> {
+          webUiPort =
+              token.substringAfter('=').toIntOrNull()
+                  ?: usageError("Invalid --webui-port value")
+          index += 1
+        }
+
         token.startsWith("--") -> usageError("Unknown option for run: $token")
         schemaPath == null -> {
           schemaPath = token
@@ -479,7 +567,13 @@ class CliAdapter(
       }
     }
 
-    return RunConfig(schemaPath = schemaPath, host = host, port = port)
+    return RunConfig(
+        schemaPath = schemaPath,
+        host = host,
+        port = port,
+        webUiEnabled = webUiEnabled,
+        webUiPort = webUiPort,
+    )
   }
 
   private fun parseSendCommand(args: List<String>): SendConfig {
@@ -489,13 +583,15 @@ class CliAdapter(
       )
     }
 
-    val messageRef = args.first()
+    var messageRef: String? = null
     var schemaPath: String? = null
     var host: String? = null
     var port: Int? = null
+    var webUiEnabled = false
+    var webUiPort = 8080
     val dynamicArgs = linkedMapOf<String, Any?>()
 
-    var index = 1
+    var index = 0
     while (index < args.size) {
       val token = args[index]
       when {
@@ -530,16 +626,57 @@ class CliAdapter(
           index += 1
         }
 
+        token == "--webui" -> {
+          webUiEnabled = true
+          index += 1
+        }
+
+        token == "--webui-port" -> {
+          webUiPort =
+              args.valueAfter(index, "--webui-port").toIntOrNull()
+                  ?: usageError("Invalid --webui-port value")
+          index += 2
+        }
+
+        token.startsWith("--webui-port=") -> {
+          webUiPort =
+              token.substringAfter('=').toIntOrNull()
+                  ?: usageError("Invalid --webui-port value")
+          index += 1
+        }
+
         token.startsWith("--") -> {
           val (key, value, consumed) = parseDynamicArg(args, index)
           dynamicArgs[key] = value
           index += consumed
         }
 
+        messageRef == null -> {
+          messageRef = token
+          index += 1
+        }
+
         else -> usageError("Unexpected token in send command: $token")
       }
     }
 
+    if (webUiEnabled) {
+      return SendConfig(
+          messageRef = messageRef,
+          schemaPath = schemaPath,
+          host = host ?: "127.0.0.1",
+          port = port ?: 9000,
+          arguments = dynamicArgs,
+          webUiEnabled = true,
+          webUiPort = webUiPort,
+      )
+    }
+
+    if (messageRef.isNullOrBlank()) {
+      usageError(
+          "send command needs message ref. Example: osc send light.color --host 127.0.0.1 --port 9000 --r 255",
+      )
+    }
     if (host.isNullOrBlank()) {
       usageError("send requires --host")
     }
@@ -553,6 +690,8 @@ class CliAdapter(
         host = host,
         port = port,
         arguments = dynamicArgs,
+        webUiEnabled = false,
+        webUiPort = webUiPort,
     )
   }
 
@@ -732,10 +871,10 @@ class CliAdapter(
   }
 
   private fun runUsageLine(): String =
-      "osc run [schemaPath] [--schema path] [--host 0.0.0.0] [--port 9000]"
+      "osc run [schemaPath] [--schema path] [--host 0.0.0.0] [--port 9000] [--webui] [--webui-port 8080]"
 
   private fun sendUsageLine(): String =
-      "osc send <messageRef> [--schema path] --host <targetHost> --port <targetPort> --arg value"
+      "osc send [messageRef] [--schema path] [--host <targetHost>] [--port <targetPort>] [--webui] [--webui-port 8080] --arg value"
 
   private fun docUsageLine(): String =
       "osc doc [schemaPath] [--schema path] [--out build/docs/osc-schema/index.html] [--format html|markdown] [--title \"OSC Schema\"]"
@@ -762,14 +901,18 @@ private data class RunConfig(
     val schemaPath: String?,
     val host: String,
     val port: Int,
+  val webUiEnabled: Boolean,
+  val webUiPort: Int,
 )
 
 private data class SendConfig(
-    val messageRef: String,
+  val messageRef: String?,
     val schemaPath: String?,
     val host: String,
     val port: Int,
     val arguments: Map<String, Any?>,
+  val webUiEnabled: Boolean,
+  val webUiPort: Int,
 )
 
 private data class DocConfig(

@@ -16,7 +16,7 @@ class WebUiAdapter(
   private val schemaLoader = SchemaLoader()
 
   fun commandSummary(): String =
-      "osc webui [schemaPath] [--schema path] [--port 8080] [--osc-host 0.0.0.0] [--osc-port 9000]"
+    "osc webui [schemaPath] [--schema path] [--port 8080] [--osc-host 0.0.0.0] [--osc-port 9000] (deprecated)"
 
   suspend fun execute(args: List<String>): Int {
     if (args.firstOrNull() in setOf("help", "-h", "--help")) {
@@ -25,6 +25,9 @@ class WebUiAdapter(
     }
 
     return try {
+      err.println(
+          "warning: 'osc webui' is deprecated. Use 'osc run --webui', 'osc send --webui', or 'osc mcp --webui'.",
+      )
       val config = parseArgs(args)
       val schemaPath =
           SchemaPathResolver.resolve(
@@ -35,13 +38,24 @@ class WebUiAdapter(
       val runtime = OscRuntime(schema = schema, transport = transport)
       runtime.start()
 
-      val server = WebUiServer(schema = schema, runtime = runtime, port = config.httpPort)
+        val server =
+          WebUiServer(
+            schema = schema,
+            runtime = runtime,
+            config =
+              WebUiServerConfig(
+                mode = WebUiMode.SENDER,
+                httpPort = config.httpPort,
+                defaultTargetHost = "127.0.0.1",
+                defaultTargetPort = config.oscPort,
+              ),
+          )
       server.start()
 
       out.println("OSC Web UI started")
       out.println("schema:     $schemaPath")
       out.println("OSC listen: ${config.oscHost}:${config.oscPort}")
-      out.println("Web UI:     http://localhost:${config.httpPort}")
+      out.println("Web UI:     http://localhost:${server.port}")
 
       Runtime.getRuntime()
           .addShutdownHook(
