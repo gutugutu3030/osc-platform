@@ -16,6 +16,7 @@ include(
     "osc-transport-udp",
     "osc-adapter-cli",
     "osc-adapter-mcp",
+    "osc-adapter-webui",
     "osc-cli",
     "osc-codegen",
     "osc-gradle-plugin",

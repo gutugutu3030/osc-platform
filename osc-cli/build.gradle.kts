@@ -11,6 +11,7 @@ plugins {
 dependencies {
   implementation(project(":osc-adapter-cli"))
   implementation(project(":osc-adapter-mcp"))
+  implementation(project(":osc-adapter-webui"))
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
   testImplementation(kotlin("test"))
 }

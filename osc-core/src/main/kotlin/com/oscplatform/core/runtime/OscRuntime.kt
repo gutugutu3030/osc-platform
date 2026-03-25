@@ -42,6 +42,28 @@ sealed interface OscRuntimeEvent {
   data class TransportErrorEvent(
       val error: TransportError,
   ) : OscRuntimeEvent
+
+  /** OSCメッセージ送信を開始したイベント。 */
+  data class SendStarted(
+      val messageRef: String,
+      val args: Map<String, Any?>,
+      val target: OscTarget,
+  ) : OscRuntimeEvent
+
+  /** OSCメッセージ送信が成功したイベント。 */
+  data class SendSucceeded(
+      val messageRef: String,
+      val args: Map<String, Any?>,
+      val target: OscTarget,
+  ) : OscRuntimeEvent
+
+  /** OSCメッセージ送信が失敗したイベント。 */
+  data class SendFailed(
+      val messageRef: String,
+      val args: Map<String, Any?>,
+      val target: OscTarget,
+      val cause: Throwable,
+  ) : OscRuntimeEvent
 }
 
 class OscRuntime(
@@ -91,20 +113,31 @@ class OscRuntime(
       rawArgs: Map<String, Any?>,
       target: OscTarget,
   ) {
-    val spec = resolveMessageSpec(messageRef)
+    _events.emit(
+        OscRuntimeEvent.SendStarted(messageRef = messageRef, args = rawArgs, target = target))
+    try {
+      val spec = resolveMessageSpec(messageRef)
 
-    val specArgNames = spec.args.map { it.name }.toSet()
-    val unknownArgs = rawArgs.keys - specArgNames
-    require(unknownArgs.isEmpty()) {
-      "Unknown args for '${spec.name}': ${unknownArgs.joinToString()}"
+      val specArgNames = spec.args.map { it.name }.toSet()
+      val unknownArgs = rawArgs.keys - specArgNames
+      require(unknownArgs.isEmpty()) {
+        "Unknown args for '${spec.name}': ${unknownArgs.joinToString()}"
+      }
+
+      val orderedArgs = flattenArgs(spec = spec, rawArgs = rawArgs)
+
+      transport.send(
+          packet = OscMessagePacket(address = spec.path, arguments = orderedArgs),
+          target = target,
+      )
+      _events.emit(
+          OscRuntimeEvent.SendSucceeded(messageRef = messageRef, args = rawArgs, target = target))
+    } catch (ex: Exception) {
+      _events.emit(
+          OscRuntimeEvent.SendFailed(
+              messageRef = messageRef, args = rawArgs, target = target, cause = ex))
+      throw ex
     }
-
-    val orderedArgs = flattenArgs(spec = spec, rawArgs = rawArgs)
-
-    transport.send(
-        packet = OscMessagePacket(address = spec.path, arguments = orderedArgs),
-        target = target,
-    )
   }
 
   suspend fun <T : OscMessage> send(

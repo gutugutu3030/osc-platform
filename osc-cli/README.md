@@ -76,13 +76,13 @@ sudo xattr -dr com.apple.quarantine "./osc-cli-<version>"
 ## コマンド一覧
 
 ```
-osc run   [schemaPath] [--schema <path>] [--host <host>] [--port <port>]
-osc send  <messageRef> [--schema <path>] --host <host> --port <port> --<arg> <value> ...
+osc run   [schemaPath] [--schema <path>] [--host <host>] [--port <port>] [--webui] [--webui-port <port>]
+osc send  [messageRef] [--schema <path>] [--host <host>] [--port <port>] [--webui] [--webui-port <port>] --<arg> <value> ...
 osc doc   [schemaPath] [--schema <path>] [--out <path>] [--format html|markdown] [--title <text>]
 osc list  [schemaPath] [--schema <path>]
 osc validate [schemaPath] [--schema <path>]
 osc gen   [schemaPath] [--schema <path>] --package <packageName> [--lang kotlin] [--out <path>]
-osc mcp   [schemaPath] [--schema <path>] --host <host> --port <port>
+osc mcp   [schemaPath] [--schema <path>] --host <host> --port <port> [--webui] [--webui-port <port>]
 osc version
 osc --version
 osc help
@@ -95,6 +95,7 @@ osc help
 ```bash
 osc run schema.yaml
 osc run --host 0.0.0.0 --port 9010
+osc run --webui --webui-port 19080
 ```
 
 詳細: [`osc-adapter-cli`](../osc-adapter-cli/README.md#run--osc-サーバ起動)
@@ -103,7 +104,10 @@ osc run --host 0.0.0.0 --port 9010
 
 ```bash
 osc send light.color --host 127.0.0.1 --port 9000 --r 255 --g 0 --b 0
+osc send light.color --host 127.0.0.1 --port 9000 --webui
 ```
+
+`--webui` を付けた場合、CLI は即送信せずブラウザ UI を起動します。`messageRef` を指定すると UI の初期選択値になります。
 
 詳細: [`osc-adapter-cli`](../osc-adapter-cli/README.md#send--osc-メッセージ送信)
 
@@ -143,6 +147,7 @@ osc gen schema.yaml --package com.example.osc.generated --out build/generated/so
 
 ```bash
 osc mcp schema.yaml --host 127.0.0.1 --port 9000
+osc mcp schema.yaml --host 127.0.0.1 --port 9000 --webui --webui-port 18082
 ```
 
 詳細: [`osc-adapter-mcp`](../osc-adapter-mcp/README.md)
