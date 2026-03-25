@@ -647,7 +647,8 @@ class WebUiServer(
   </script>
 </body>
 </html>
-""".trimIndent()
+"""
+        .trimIndent()
   }
 }
 

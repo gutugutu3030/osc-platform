@@ -111,18 +111,18 @@ class McpAdapter(
 
     if (parsed.webUiEnabled) {
       webUiServer =
-        WebUiServer(
-          schema = schema,
-          runtime = runtime,
-          config =
-            WebUiServerConfig(
-              mode = WebUiMode.MCP,
-              httpPort = parsed.webUiPort,
-              defaultTargetHost = parsed.host,
-              defaultTargetPort = parsed.port,
-            ),
-          additionalEvents = webUiEventSink.asSharedFlow(),
-        )
+          WebUiServer(
+              schema = schema,
+              runtime = runtime,
+              config =
+                  WebUiServerConfig(
+                      mode = WebUiMode.MCP,
+                      httpPort = parsed.webUiPort,
+                      defaultTargetHost = parsed.host,
+                      defaultTargetPort = parsed.port,
+                  ),
+              additionalEvents = webUiEventSink.asSharedFlow(),
+          )
       webUiServer.start()
       err.println("Web UI: http://localhost:${webUiServer.port}")
     }
@@ -153,7 +153,7 @@ class McpAdapter(
             toolByName = toolByName,
             bundleToolByName = bundleToolByName,
             target = OscTarget(parsed.host, parsed.port),
-          webUiEventSink = webUiEventSink,
+            webUiEventSink = webUiEventSink,
         )
 
     err.println("MCP server started schema=$schemaPath target=${parsed.host}:${parsed.port}")
@@ -228,8 +228,7 @@ class McpAdapter(
 
         token.startsWith("--webui-port=") -> {
           webUiPort =
-              token.substringAfter('=').toIntOrNull()
-                  ?: mcpUsageError("Invalid --webui-port value")
+              token.substringAfter('=').toIntOrNull() ?: mcpUsageError("Invalid --webui-port value")
           index += 1
         }
 
@@ -251,11 +250,11 @@ class McpAdapter(
     }
 
     return McpConfig(
-      schemaPath = schemaPath,
-      host = host,
-      port = port,
-      webUiEnabled = webUiEnabled,
-      webUiPort = webUiPort,
+        schemaPath = schemaPath,
+        host = host,
+        port = port,
+        webUiEnabled = webUiEnabled,
+        webUiPort = webUiPort,
     )
   }
 
@@ -272,8 +271,8 @@ private data class McpConfig(
     val schemaPath: String?,
     val host: String,
     val port: Int,
-  val webUiEnabled: Boolean,
-  val webUiPort: Int,
+    val webUiEnabled: Boolean,
+    val webUiPort: Int,
 )
 
 private class OscMcpServer(
@@ -282,7 +281,7 @@ private class OscMcpServer(
     private val toolByName: Map<String, OscMessageSpec>,
     private val bundleToolByName: Map<String, McpBundleTool> = emptyMap(),
     private val target: OscTarget,
-  private val webUiEventSink: MutableSharedFlow<WebUiLogEvent>? = null,
+    private val webUiEventSink: MutableSharedFlow<WebUiLogEvent>? = null,
 ) {
   private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
@@ -369,12 +368,12 @@ private class OscMcpServer(
                   })
               set("content", content)
             }
-            webUiEventSink?.tryEmit(
-              WebUiLogEvent(
+        webUiEventSink?.tryEmit(
+            WebUiLogEvent(
                 type = "mcp_success",
                 message = "$name -> ${target.host}:${target.port}",
-              ),
-            )
+            ),
+        )
         protocol.writeMessage(resultResponse(id, result))
         return
       }
