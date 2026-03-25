@@ -14,6 +14,18 @@ import kotlin.io.path.isRegularFile
  * 3. カレントディレクトリ内の `schema` で始まる `.kts/.yaml/.yml` ファイルを辞書順で最初に使用する。
  */
 object SchemaPathResolver {
+  /**
+   * スキーマファイルのパスを解決する。
+   *
+   * 明示的なパスが指定されている場合はそのパスを検証して返す。 未指定の場合は、カレントディレクトリから優先順位に従いスキーマファイルを探索する。
+   *
+   * @param explicitPath 明示的に指定されたスキーマファイルパス（省略可能）
+   * @param warn 複数ファイルが見つかった場合の警告コールバック（省略可能）
+   * @param cwd 探索の基点となるカレントディレクトリ
+   * @return 解決されたスキーマファイルの絶対パス
+   * @throws IllegalArgumentException 明示的パスが存在しないか通常ファイルでない場合
+   * @throws IllegalStateException カレントディレクトリにスキーマファイルが見つからない場合
+   */
   fun resolve(
       explicitPath: String?,
       warn: ((String) -> Unit)? = null,
