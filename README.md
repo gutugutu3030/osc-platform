@@ -122,6 +122,8 @@ oscSchema {
 補足:
 
 - `arg(name, type)` は `scalar(name, type)` のショートハンドとして引き続き利用可能
+- すべてのビルダークラスに `@OscSchemaDslMarker`（`@DslMarker`）が付与されており、ネストされたブロック内で外側スコープのメンバーが暗黙的に補完されることを防止します
+- IDE 補完を有効にするセットアップ方法は [osc-core/README.md](osc-core/README.md#ide-補完を有効にするためのセットアップ) を参照
 
 ### 2. YAML (補助フォーマット)
 
