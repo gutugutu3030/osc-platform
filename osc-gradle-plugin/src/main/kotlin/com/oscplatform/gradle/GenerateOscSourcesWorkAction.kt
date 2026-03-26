@@ -16,6 +16,12 @@ abstract class GenerateOscSourcesWorkAction : WorkAction<GenerateOscSourcesWorkP
 
   private val logger = Logging.getLogger(GenerateOscSourcesWorkAction::class.java)
 
+  /**
+   * スキーマファイルからソースコードを生成し、出力ディレクトリへ書き出す。
+   *
+   * パラメータの [GenerateOscSourcesWorkParameters] からスキーマパス・パッケージ名・言語・出力先を取得し、 [OscCodegen]
+   * を使用してコード生成を行う。既存の出力ディレクトリは事前に削除される。
+   */
   override fun execute() {
     val schemaPath = parameters.schemaFile.get().asFile.toPath()
     val options =

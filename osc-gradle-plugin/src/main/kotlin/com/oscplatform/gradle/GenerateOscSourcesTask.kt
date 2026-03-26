@@ -27,21 +27,31 @@ import org.gradle.workers.WorkerExecutor
 @CacheableTask
 abstract class GenerateOscSourcesTask : DefaultTask() {
 
+  /** 読み込むスキーマファイル (schema.yaml / schema.kts)。 */
   @get:InputFile
   @get:PathSensitive(PathSensitivity.RELATIVE)
   abstract val schemaFile: RegularFileProperty
 
+  /** 生成コードのパッケージ名。 */
   @get:Input abstract val packageName: Property<String>
 
+  /** 生成言語 (`"kotlin"` または `"java"`)。 */
   @get:Input abstract val language: Property<String>
 
+  /** 生成されたソースの出力ディレクトリ。 */
   @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 
   /** Worker の classloader isolation に使用する classpath。 */
   @get:Classpath abstract val workerClasspath: ConfigurableFileCollection
 
+  /** Gradle Worker API の [WorkerExecutor] インスタンス。 */
   @get:Inject abstract val workerExecutor: WorkerExecutor
 
+  /**
+   * コード生成を実行する。
+   *
+   * Worker API の classloader isolation モードを利用し、[GenerateOscSourcesWorkAction] をサブミットする。
+   */
   @TaskAction
   fun generate() {
     val workQueue =

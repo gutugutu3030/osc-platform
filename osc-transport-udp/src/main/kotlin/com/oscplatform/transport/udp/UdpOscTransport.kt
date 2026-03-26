@@ -23,15 +23,29 @@ import kotlinx.coroutines.withContext
 /** 連続受信失敗がこの回数を超えた場合に受信ループを停止するサーキットブレーカ閾値。 */
 private const val CIRCUIT_BREAKER_THRESHOLD = 25
 
+/**
+ * UDP経由でOSCパケットを送受信するトランスポート実装。
+ *
+ * 指定されたホストとポートにバインドしてOSCパケットを受信し、 任意の [OscTarget] に対してOSCパケットを送信する。
+ * サーキットブレーカにより、連続受信失敗が閾値を超えた場合に受信ループを自動停止する。
+ *
+ * @param bindHost バインドするホスト名またはIPアドレス
+ * @param bindPort バインドするUDPポート番号
+ * @param scope コルーチンスコープ（受信ループの起動に使用される）
+ */
 class UdpOscTransport(
     private val bindHost: String,
     private val bindPort: Int,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) : OscTransport {
   private val _incomingPackets = MutableSharedFlow<OscPacket>(extraBufferCapacity = 256)
+
+  /** 受信したOSCパケットのフロー。 */
   override val incomingPackets: Flow<OscPacket> = _incomingPackets.asSharedFlow()
 
   private val _errors = MutableSharedFlow<TransportError>(extraBufferCapacity = 64)
+
+  /** トランスポート層で発生したエラーのフロー。 */
   override val errors: Flow<TransportError> = _errors.asSharedFlow()
 
   /** 現在までの連続受信失敗回数。正常受信時にリセットされる。 */
@@ -47,6 +61,11 @@ class UdpOscTransport(
   @Volatile private var receiveSocket: DatagramSocket? = null
   private var receiveJob: Job? = null
 
+  /**
+   * トランスポートを開始し、UDPソケットをバインドして受信ループを起動する。
+   *
+   * 既に開始済みの場合は何もしない。
+   */
   override suspend fun start() {
     if (receiveSocket != null) {
       return
@@ -58,6 +77,7 @@ class UdpOscTransport(
     receiveJob = scope.launch { receiveLoop(socket) }
   }
 
+  /** トランスポートを停止し、UDPソケットを閉じて受信ループをキャンセルする。 */
   override suspend fun stop() {
     receiveSocket?.close()
     receiveSocket = null
@@ -65,6 +85,14 @@ class UdpOscTransport(
     receiveJob = null
   }
 
+  /**
+   * OSCパケットを指定されたターゲットへUDP経由で送信する。
+   *
+   * 受信用ソケットが利用可能であればそれを再利用し、なければ一時ソケットを作成して送信する。
+   *
+   * @param packet 送信するOSCパケット
+   * @param target 送信先の [OscTarget]（ホストとポート）
+   */
   override suspend fun send(packet: OscPacket, target: OscTarget) {
     val bytes = OscCodec.encode(packet)
     withContext(Dispatchers.IO) {
@@ -77,6 +105,15 @@ class UdpOscTransport(
     }
   }
 
+  /**
+   * UDPデータグラムの受信ループを実行する。
+   *
+   * ソケットからデータグラムを受信し、OSCパケットにデコードして [incomingPackets] フローへ発行する。 連続失敗回数が [CIRCUIT_BREAKER_THRESHOLD]
+   * に達した場合、ループを停止する。
+   *
+   * @param socket 受信に使用する [DatagramSocket]
+   * @throws IllegalStateException 連続受信失敗が閾値を超えた場合
+   */
   private suspend fun receiveLoop(socket: DatagramSocket) {
     val buffer = ByteArray(65535)
     while (scope.isActive && !socket.isClosed) {
@@ -108,6 +145,13 @@ class UdpOscTransport(
     }
   }
 
+  /**
+   * 指定されたソケットを使用してUDPデータグラムを送信する。
+   *
+   * @param socket 送信に使用する [DatagramSocket]
+   * @param payload 送信するバイト配列
+   * @param target 送信先の [OscTarget]（ホストとポート）
+   */
   private fun sendDatagram(
       socket: DatagramSocket,
       payload: ByteArray,

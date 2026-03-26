@@ -13,6 +13,9 @@ package com.oscplatform.core.runtime
 /**
  * スカラー引数を安全に取り出す。
  *
+ * @param key 取り出す引数のキー名
+ * @param messageName エラーメッセージに含めるメッセージ定義名
+ * @return 指定された型 [T] にキャストされた引数値
  * @throws IllegalArgumentException キーが存在しない、または型が一致しない場合
  */
 inline fun <reified T : Any> Map<String, Any?>.oscTyped(key: String, messageName: String): T {
@@ -33,6 +36,9 @@ inline fun <reified T : Any> Map<String, Any?>.oscTyped(key: String, messageName
  *
  * JVM の型消去により要素型の完全な検証はできないが、先頭要素で型チェックを行い 不正な要素を早期に検出する。
  *
+ * @param key 取り出す引数のキー名
+ * @param messageName エラーメッセージに含めるメッセージ定義名
+ * @return 指定された型 [T] の要素を持つリスト
  * @throws IllegalArgumentException キーが存在しない、List でない、または先頭要素の型が一致しない場合
  */
 @Suppress("UNCHECKED_CAST")
@@ -66,6 +72,9 @@ inline fun <reified T : Any> Map<String, Any?>.oscTypedList(
  *
  * 全要素が [Map] であることを検証してから返す。
  *
+ * @param key 取り出す引数のキー名
+ * @param messageName エラーメッセージに含めるメッセージ定義名
+ * @return タプル要素のマップリスト
  * @throws IllegalArgumentException キーが存在しない、List でない、または要素が Map でない場合
  */
 @Suppress("UNCHECKED_CAST")

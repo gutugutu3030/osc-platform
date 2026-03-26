@@ -22,6 +22,12 @@ import kotlinx.coroutines.runBlocking
  * デモの流れ: Step 1 – /mesh/points を pointCount 省略で送信（配列長から自動導出を実演） Step 2 – bundle "set_scene" を
  * sendBundle でまとめて送信 Step 3 – 不正パスのパケットを直接送信して ValidationError を確認
  */
+/**
+ * 構造化バンドルサンプルのエントリーポイント。
+ *
+ * スキーマを読み込み、UDP ループバックで /mesh/points 送信、 bundle "set_scene" のアトミック送信、および不正パスによる ValidationError
+ * の確認を行う。
+ */
 fun main(): Unit = runBlocking {
   val target = OscTarget("127.0.0.1", 19010)
 

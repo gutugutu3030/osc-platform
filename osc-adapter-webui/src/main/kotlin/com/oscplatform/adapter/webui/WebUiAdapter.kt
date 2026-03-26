@@ -9,15 +9,36 @@ import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.awaitCancellation
 import kotlinx.coroutines.runBlocking
 
+/**
+ * Web UI アダプター。
+ *
+ * スキーマファイルを読み込み、OSC ランタイムと Web UI サーバーを起動して ブラウザベースの送受信インターフェースを提供する。
+ *
+ * @param out 標準出力ストリーム
+ * @param err 標準エラー出力ストリーム
+ */
 class WebUiAdapter(
     private val out: PrintStream = System.out,
     private val err: PrintStream = System.err,
 ) {
   private val schemaLoader = SchemaLoader()
 
+  /**
+   * コマンドの使用方法サマリーを返す。
+   *
+   * @return コマンドライン使用方法の文字列
+   */
   fun commandSummary(): String =
       "osc webui [schemaPath] [--schema path] [--port 8080] [--osc-host 0.0.0.0] [--osc-port 9000] (deprecated)"
 
+  /**
+   * Web UI コマンドを実行する。
+   *
+   * 引数を解析し、スキーマ・ランタイム・Web UI サーバーを起動してキャンセルされるまで待機する。
+   *
+   * @param args コマンドライン引数のリスト
+   * @return 終了コード（0: 正常、1: エラー）
+   */
   suspend fun execute(args: List<String>): Int {
     if (args.firstOrNull() in setOf("help", "-h", "--help")) {
       out.println(commandSummary())
@@ -86,6 +107,13 @@ class WebUiAdapter(
     }
   }
 
+  /**
+   * コマンドライン引数を解析して [WebUiConfig] を返す。
+   *
+   * @param args コマンドライン引数のリスト
+   * @return 解析された設定
+   * @throws WebUiUsageException 不正な引数が指定された場合
+   */
   private fun parseArgs(args: List<String>): WebUiConfig {
     var schemaPath: String? = null
     var httpPort = 8080
@@ -151,12 +179,28 @@ class WebUiAdapter(
     )
   }
 
+  /**
+   * 指定インデックスの次の引数値を取得する拡張関数。
+   *
+   * @param index 現在のオプションのインデックス
+   * @param option オプション名（エラーメッセージ用）
+   * @return 次の引数の値
+   * @throws WebUiUsageException 値が存在しない場合
+   */
   private fun List<String>.valueAfter(index: Int, option: String): String {
     if (index + 1 >= size) webUiUsageError("$option requires a value")
     return this[index + 1]
   }
 }
 
+/**
+ * Web UI コマンドの設定。
+ *
+ * @property schemaPath スキーマファイルのパス（null の場合はデフォルト解決）
+ * @property httpPort HTTP サーバーのポート番号
+ * @property oscHost OSC 受信ホストアドレス
+ * @property oscPort OSC 受信ポート番号
+ */
 private data class WebUiConfig(
     val schemaPath: String?,
     val httpPort: Int,
@@ -164,6 +208,18 @@ private data class WebUiConfig(
     val oscPort: Int,
 )
 
+/**
+ * 使用方法エラーを [WebUiUsageException] としてスローする。
+ *
+ * @param message エラーメッセージ
+ * @return Nothing（常に例外をスローする）
+ * @throws WebUiUsageException 常にスローされる
+ */
 private fun webUiUsageError(message: String): Nothing = throw WebUiUsageException(message)
 
+/**
+ * Web UI コマンドの使用方法エラーを表す例外。
+ *
+ * @param message エラーメッセージ
+ */
 private class WebUiUsageException(message: String) : IllegalArgumentException(message)

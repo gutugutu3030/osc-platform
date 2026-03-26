@@ -29,6 +29,14 @@ import org.gradle.api.tasks.SourceSetContainer
  */
 class OscSchemaCodegenPlugin : Plugin<Project> {
 
+  /**
+   * プラグインをプロジェクトに適用する。
+   *
+   * 拡張設定 [OscSchemaCodegenExtension] の登録、`generateOscSources` タスクの生成、 および Kotlin JVM / Java
+   * プラグインへのソースセットフックを行う。
+   *
+   * @param project 適用対象の Gradle [Project]
+   */
   override fun apply(project: Project) {
     val extension =
         project.extensions.create(
@@ -76,6 +84,9 @@ class OscSchemaCodegenPlugin : Plugin<Project> {
    * プラグイン自身の classloader から全 JAR / クラスディレクトリを取得する。 これにより
    * osc-codegen・osc-core・kotlin-scripting-jsr223 等が Gradle の内部 classpath と分離され、KTS
    * スクリプトエンジンを安全に使用できる。
+   *
+   * @param project classpath を解決するための Gradle [Project]
+   * @return Worker に渡す [FileCollection]
    */
   private fun collectWorkerClasspath(project: Project): FileCollection {
     val files = LinkedHashSet<File>()

@@ -26,38 +26,75 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.launch
 
+/** OSC ランタイムで発生するイベントを表す sealed インターフェース。 */
 sealed interface OscRuntimeEvent {
+  /**
+   * OSC メッセージを受信したイベント。
+   *
+   * @property spec 受信メッセージに対応するスキーマ仕様
+   * @property packet 受信した生パケット
+   * @property namedArgs パースされた名前付き引数マップ
+   */
   data class Received(
       val spec: OscMessageSpec,
       val packet: OscMessagePacket,
       val namedArgs: Map<String, Any?>,
   ) : OscRuntimeEvent
 
+  /**
+   * 受信メッセージのバリデーションに失敗したイベント。
+   *
+   * @property reason バリデーション失敗の理由
+   * @property address 失敗した OSC アドレス（不明の場合は null）
+   */
   data class ValidationError(
       val reason: String,
       val address: String?,
   ) : OscRuntimeEvent
 
-  /** Transport受信ループで発生したエラー。連続失敗回数を含む。 */
+  /**
+   * Transport受信ループで発生したエラー。連続失敗回数を含む。
+   *
+   * @property error 発生したトランスポートエラー
+   */
   data class TransportErrorEvent(
       val error: TransportError,
   ) : OscRuntimeEvent
 
-  /** OSCメッセージ送信を開始したイベント。 */
+  /**
+   * OSCメッセージ送信を開始したイベント。
+   *
+   * @property messageRef メッセージ参照名
+   * @property args 送信する引数マップ
+   * @property target 送信先ターゲット
+   */
   data class SendStarted(
       val messageRef: String,
       val args: Map<String, Any?>,
       val target: OscTarget,
   ) : OscRuntimeEvent
 
-  /** OSCメッセージ送信が成功したイベント。 */
+  /**
+   * OSCメッセージ送信が成功したイベント。
+   *
+   * @property messageRef メッセージ参照名
+   * @property args 送信した引数マップ
+   * @property target 送信先ターゲット
+   */
   data class SendSucceeded(
       val messageRef: String,
       val args: Map<String, Any?>,
       val target: OscTarget,
   ) : OscRuntimeEvent
 
-  /** OSCメッセージ送信が失敗したイベント。 */
+  /**
+   * OSCメッセージ送信が失敗したイベント。
+   *
+   * @property messageRef メッセージ参照名
+   * @property args 送信しようとした引数マップ
+   * @property target 送信先ターゲット
+   * @property cause 送信失敗の原因となった例外
+   */
   data class SendFailed(
       val messageRef: String,
       val args: Map<String, Any?>,
@@ -66,29 +103,57 @@ sealed interface OscRuntimeEvent {
   ) : OscRuntimeEvent
 }
 
+/**
+ * OSC スキーマに基づいてメッセージの送受信を管理するランタイムエンジン。
+ *
+ * スキーマ定義に従い、受信パケットのバリデーション・名前付き引数への変換、 および送信時の引数フラット化・型変換を行う。
+ *
+ * @param schema メッセージ定義を提供する OSC スキーマ
+ * @param transport パケットの送受信を担うトランスポート層
+ * @param scope コルーチンの実行スコープ
+ */
 class OscRuntime(
     private val schema: OscSchema,
     private val transport: OscTransport,
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
   private val _events = MutableSharedFlow<OscRuntimeEvent>(extraBufferCapacity = 128)
+  /** ランタイムで発生する全イベントを流す [Flow]。 */
   val events: Flow<OscRuntimeEvent> = _events.asSharedFlow()
 
   private val handlers =
       ConcurrentHashMap<String, CopyOnWriteArrayList<suspend (OscRuntimeEvent.Received) -> Unit>>()
   private var receiveJob: Job? = null
 
+  /**
+   * 指定されたメッセージ仕様に対する受信ハンドラを登録する。
+   *
+   * @param spec 受信対象のメッセージ仕様
+   * @param handler 受信時に呼び出されるコールバック
+   */
   fun on(spec: OscMessageSpec, handler: suspend (OscRuntimeEvent.Received) -> Unit) {
     val registered = resolveKnownMessageSpec(spec)
     handlers.computeIfAbsent(registered.path) { CopyOnWriteArrayList() }.add(handler)
   }
 
+  /**
+   * codegen 生成メッセージクラスのコンパニオンを使って型安全な受信ハンドラを登録する。
+   *
+   * @param T メッセージの型
+   * @param companion メッセージクラスのコンパニオンオブジェクト
+   * @param handler 受信時にデシリアライズ済みメッセージで呼び出されるコールバック
+   */
   fun <T : OscMessage> on(companion: OscMessageCompanion<T>, handler: suspend (T) -> Unit) {
     val spec =
         schema.resolveMessage(companion.NAME) ?: error("Schema has no message: ${companion.NAME}")
     on(spec) { event -> handler(companion.fromNamedArgs(event.namedArgs)) }
   }
 
+  /**
+   * ランタイムを開始し、トランスポートの受信ループを起動する。
+   *
+   * 既に開始済みの場合は何もしない。
+   */
   suspend fun start() {
     if (receiveJob != null) {
       return
@@ -102,12 +167,23 @@ class OscRuntime(
     }
   }
 
+  /** ランタイムを停止し、受信ループおよびトランスポートを終了する。 */
   suspend fun stop() {
     receiveJob?.cancelAndJoin()
     receiveJob = null
     transport.stop()
   }
 
+  /**
+   * メッセージ参照名と引数マップを使って OSC メッセージを送信する。
+   *
+   * スキーマに基づいて引数のバリデーション・型変換・フラット化を行い、 トランスポート経由で送信する。
+   *
+   * @param messageRef メッセージ参照名（スキーマ定義名またはパス）
+   * @param rawArgs 名前付き引数マップ
+   * @param target 送信先ターゲット
+   * @throws IllegalArgumentException メッセージ参照が不明、または引数が不正な場合
+   */
   suspend fun send(
       messageRef: String,
       rawArgs: Map<String, Any?>,
@@ -140,12 +216,28 @@ class OscRuntime(
     }
   }
 
+  /**
+   * codegen 生成メッセージクラスのインスタンスを型安全に送信する。
+   *
+   * @param T メッセージの型
+   * @param companion メッセージクラスのコンパニオンオブジェクト
+   * @param msg 送信するメッセージインスタンス
+   * @param target 送信先ターゲット
+   */
   suspend fun <T : OscMessage> send(
       companion: OscMessageCompanion<T>,
       msg: T,
       target: OscTarget,
   ) = send(messageRef = companion.NAME, rawArgs = msg.toNamedArgs(), target = target)
 
+  /**
+   * 複数メッセージを OSC バンドルとしてアトミックに送信する。
+   *
+   * @param messages メッセージ参照名と名前付き引数マップのペアリスト
+   * @param target 送信先ターゲット
+   * @param timeTag OSC タイムタグ（デフォルトは即時送信）
+   * @throws IllegalArgumentException メッセージリストが空、または引数が不正な場合
+   */
   suspend fun sendBundle(
       messages: List<Pair<String, Map<String, Any?>>>,
       target: OscTarget,
@@ -173,12 +265,25 @@ class OscRuntime(
     )
   }
 
+  /**
+   * codegen 生成バンドルクラスのインスタンスを型安全にバンドル送信する。
+   *
+   * @param T バンドルの型
+   * @param bundle 送信するバンドルインスタンス
+   * @param target 送信先ターゲット
+   * @param timeTag OSC タイムタグ（デフォルトは即時送信）
+   */
   suspend fun <T : OscBundle> sendBundle(
       bundle: T,
       target: OscTarget,
       timeTag: Long = OscTimeTag.IMMEDIATE,
   ) = sendBundle(messages = bundle.toMessages(), target = target, timeTag = timeTag)
 
+  /**
+   * 受信パケットを種別に応じて処理する。
+   *
+   * @param packet 受信した OSC パケット
+   */
   private suspend fun processPacket(packet: OscPacket) {
     when (packet) {
       is OscMessagePacket -> processMessage(packet)
@@ -186,6 +291,11 @@ class OscRuntime(
     }
   }
 
+  /**
+   * 受信した OSC メッセージパケットをスキーマに基づいてバリデーションし、ハンドラに振り分ける。
+   *
+   * @param packet 受信した OSC メッセージパケット
+   */
   private suspend fun processMessage(packet: OscMessagePacket) {
     val spec = schema.findByPath(packet.address)
     if (spec == null) {
@@ -211,6 +321,13 @@ class OscRuntime(
     handlers[spec.path].orEmpty().forEach { handler -> scope.launch { handler(event) } }
   }
 
+  /**
+   * 名前付き引数マップをスキーマ定義順にフラット化したリストに変換する。
+   *
+   * @param spec メッセージ仕様
+   * @param rawArgs 名前付き引数マップ
+   * @return フラット化された引数リスト
+   */
   private fun flattenArgs(spec: OscMessageSpec, rawArgs: Map<String, Any?>): List<Any?> {
     val flattened = mutableListOf<Any?>()
 
@@ -268,6 +385,13 @@ class OscRuntime(
     return flattened
   }
 
+  /**
+   * 配列引数の値からフィールド参照型の長さを導出する。
+   *
+   * @param spec メッセージ仕様
+   * @param rawArgs 名前付き引数マップ
+   * @return フィールド名をキー、導出された長さを値とするマップ
+   */
   private fun deriveLengthsFromArrayValues(
       spec: OscMessageSpec,
       rawArgs: Map<String, Any?>,
@@ -292,6 +416,14 @@ class OscRuntime(
     return derivedLengths
   }
 
+  /**
+   * 送信時に配列の期待長を解決する。
+   *
+   * @param argNode 配列引数ノード
+   * @param lengthContext 既に解決されたフィールド長のコンテキスト
+   * @param spec メッセージ仕様
+   * @return 期待される配列長
+   */
   private fun resolveExpectedLengthForSend(
       argNode: ArrayArgNode,
       lengthContext: Map<String, Int>,
@@ -307,6 +439,15 @@ class OscRuntime(
     }
   }
 
+  /**
+   * 配列引数の値をフラット化してスカラーのリストに変換する。
+   *
+   * @param argNode 配列引数ノード
+   * @param rawValue 配列の生値
+   * @param expectedLength 期待される配列長
+   * @param spec メッセージ仕様
+   * @return フラット化されたスカラー値のリスト
+   */
   private fun flattenArrayValue(
       argNode: ArrayArgNode,
       rawValue: Any,
@@ -357,6 +498,14 @@ class OscRuntime(
     return flattened
   }
 
+  /**
+   * ワイヤ上のフラットな引数リストをスキーマ定義に基づき名前付き引数マップに復元する。
+   *
+   * @param spec メッセージ仕様
+   * @param wireArgs ワイヤ上のフラット引数リスト
+   * @return 名前付き引数マップ
+   * @throws IllegalArgumentException 引数の数や型が仕様と一致しない場合
+   */
   private fun unflattenArgs(spec: OscMessageSpec, wireArgs: List<Any?>): Map<String, Any?> {
     val namedArgs = LinkedHashMap<String, Any?>()
     val lengthContext = mutableMapOf<String, Int>()
@@ -439,6 +588,15 @@ class OscRuntime(
     return namedArgs
   }
 
+  /**
+   * 値をリスト形式に変換する。List、Array、Iterable に対応する。
+   *
+   * @param value 変換対象の値
+   * @param fieldName エラーメッセージに含めるフィールド名
+   * @param specName エラーメッセージに含めるスキーマ定義名
+   * @return リスト形式に変換された値
+   * @throws IllegalArgumentException 値がリスト互換でない場合
+   */
   private fun asListLike(value: Any, fieldName: String, specName: String): List<Any?> {
     return when (value) {
       is List<*> -> value
@@ -451,6 +609,15 @@ class OscRuntime(
     }
   }
 
+  /**
+   * 値を文字列キーのマップ形式に変換する。
+   *
+   * @param value 変換対象の値
+   * @param fieldName エラーメッセージに含めるフィールド名
+   * @param specName エラーメッセージに含めるスキーマ定義名
+   * @return 文字列キーのマップ
+   * @throws IllegalArgumentException 値が Map でない、またはキーが文字列でない場合
+   */
   private fun asMapLike(value: Any?, fieldName: String, specName: String): Map<String, Any?> {
     require(value is Map<*, *>) { "Arg '$fieldName' for '$specName' must be an object value" }
     val result = LinkedHashMap<String, Any?>()
@@ -463,6 +630,14 @@ class OscRuntime(
     return result
   }
 
+  /**
+   * 生の値を指定された [OscType] に対応する Kotlin 型に変換する。
+   *
+   * @param raw 変換対象の生値
+   * @param type 変換先の OSC 型
+   * @return 変換後の値
+   * @throws IllegalArgumentException 値が指定された型に変換できない場合
+   */
   private fun convertToType(raw: Any, type: OscType): Any {
     return when (type) {
       OscType.INT ->
@@ -522,6 +697,13 @@ class OscRuntime(
     }
   }
 
+  /**
+   * 値が指定された [OscType] と互換性があるかを判定する。
+   *
+   * @param value 判定対象の値
+   * @param type 期待する OSC 型
+   * @return 互換性がある場合は true
+   */
   private fun isTypeCompatible(value: Any?, type: OscType): Boolean {
     return when (type) {
       OscType.INT -> value is Int
@@ -532,11 +714,25 @@ class OscRuntime(
     }
   }
 
+  /**
+   * メッセージ参照名をスキーマから解決して仕様を返す。
+   *
+   * @param messageRef メッセージ参照名（スキーマ定義名またはパス）
+   * @return 解決されたメッセージ仕様
+   * @throws IllegalArgumentException メッセージ参照が不明な場合
+   */
   private fun resolveMessageSpec(messageRef: String): OscMessageSpec {
     return schema.resolveMessage(messageRef)
         ?: throw IllegalArgumentException("Unknown message reference: $messageRef")
   }
 
+  /**
+   * 既知のメッセージ仕様をスキーマで検証し、正規化された仕様を返す。
+   *
+   * @param spec 検証対象のメッセージ仕様
+   * @return スキーマから解決された正規化済みメッセージ仕様
+   * @throws IllegalArgumentException パスが不明、または名前が一致しない場合
+   */
   private fun resolveKnownMessageSpec(spec: OscMessageSpec): OscMessageSpec {
     val normalizedPath = OscSchema.normalizePath(spec.path)
     val resolved =

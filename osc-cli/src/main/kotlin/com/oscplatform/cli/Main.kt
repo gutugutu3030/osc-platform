@@ -6,9 +6,19 @@ import com.oscplatform.adapter.webui.WebUiAdapter
 import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
 
+/** ヘルプ表示を要求するフラグの集合。 */
 private val helpFlags = setOf("help", "-h", "--help")
+
+/** バージョン表示を要求するフラグの集合。 */
 private val versionFlags = setOf("-V", "--version")
 
+/**
+ * OSC CLI のエントリーポイント。
+ *
+ * コマンドライン引数を解析し、対応するアダプターにディスパッチする。
+ *
+ * @param args コマンドライン引数
+ */
 fun main(args: Array<String>) = runBlocking {
   val cliAdapter = CliAdapter()
   val mcpAdapter = McpAdapter()
@@ -40,6 +50,16 @@ fun main(args: Array<String>) = runBlocking {
   }
 }
 
+/**
+ * トップレベルの使用方法テキストを構築する。
+ *
+ * 各アダプターのコマンドサマリーを結合した文字列を返す。
+ *
+ * @param cliAdapter CLI アダプター
+ * @param mcpAdapter MCP アダプター
+ * @param webUiAdapter Web UI アダプター
+ * @return 使用方法のテキスト
+ */
 internal fun buildTopLevelUsage(
     cliAdapter: CliAdapter = CliAdapter(),
     mcpAdapter: McpAdapter = McpAdapter(),
@@ -52,6 +72,13 @@ internal fun buildTopLevelUsage(
   append("osc help")
 }
 
+/**
+ * トップレベルの使用方法を標準出力に表示する。
+ *
+ * @param cliAdapter CLI アダプター
+ * @param mcpAdapter MCP アダプター
+ * @param webUiAdapter Web UI アダプター
+ */
 private fun printTopLevelUsage(
     cliAdapter: CliAdapter,
     mcpAdapter: McpAdapter,

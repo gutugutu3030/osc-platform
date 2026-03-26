@@ -13,7 +13,20 @@ import java.time.OffsetDateTime
 import java.time.ZoneOffset
 import java.time.format.DateTimeFormatter
 
+/**
+ * OSCスキーマからHTML形式のドキュメントを生成するレンダラー。
+ *
+ * メッセージ定義やバンドル定義をスタイル付きのHTML文書として出力する。
+ */
 internal object SchemaHtmlDocRenderer {
+  /**
+   * OSCスキーマからHTML形式のドキュメント文字列を生成する。
+   *
+   * @param schema レンダリング対象のOSCスキーマ
+   * @param schemaPath スキーマファイルのパス（ドキュメントのメタ情報に使用）
+   * @param title ドキュメントのタイトル。nullまたは空の場合はデフォルトタイトルを使用
+   * @return 生成されたHTML文字列
+   */
   fun render(schema: OscSchema, schemaPath: Path, title: String?): String {
     val documentTitle =
         title?.trim().takeUnless { it.isNullOrEmpty() } ?: "OSC Schema Documentation"
@@ -188,6 +201,12 @@ internal object SchemaHtmlDocRenderer {
     }
   }
 
+  /**
+   * 引数リストからシグネチャ文字列をフォーマットする。
+   *
+   * @param args フォーマット対象の引数ノードリスト
+   * @return フォーマットされたシグネチャ文字列。引数がない場合は"-"
+   */
   private fun formatArgSignature(args: List<OscArgNode>): String {
     if (args.isEmpty()) {
       return "-"
@@ -195,6 +214,12 @@ internal object SchemaHtmlDocRenderer {
     return args.joinToString(", ") { arg -> "${arg.name}:${typeOf(arg)}" }
   }
 
+  /**
+   * 引数ノードの種別を文字列で返す。
+   *
+   * @param arg 種別を判定する引数ノード
+   * @return "scalar"または"array"
+   */
   private fun kindOf(arg: OscArgNode): String {
     return when (arg) {
       is ScalarArgNode -> "scalar"
@@ -202,6 +227,12 @@ internal object SchemaHtmlDocRenderer {
     }
   }
 
+  /**
+   * 引数ノードの型を表示用文字列に変換する。
+   *
+   * @param arg 型情報を取得する引数ノード
+   * @return 型の表示用文字列（例: "int", "array&lt;float&gt;"）
+   */
   private fun typeOf(arg: OscArgNode): String {
     return when (arg) {
       is ScalarArgNode -> tokenOf(arg.type)
@@ -209,6 +240,12 @@ internal object SchemaHtmlDocRenderer {
     }
   }
 
+  /**
+   * 配列要素の型を表示用文字列に変換する。
+   *
+   * @param item 配列要素の仕様
+   * @return 要素型の表示用文字列（例: "int", "tuple{x:float, y:float}"）
+   */
   private fun arrayItemTypeOf(item: ArrayItemSpec): String {
     return when (item) {
       is ArrayItemSpec.ScalarItem -> tokenOf(item.type)
@@ -220,6 +257,12 @@ internal object SchemaHtmlDocRenderer {
     }
   }
 
+  /**
+   * 引数ノードの制約情報を表示用文字列に変換する。
+   *
+   * @param arg 制約情報を取得する引数ノード
+   * @return 制約の表示用文字列（例: "role=length", "length=10", "-"）
+   */
   private fun constraintsOf(arg: OscArgNode): String {
     return when (arg) {
       is ScalarArgNode -> {
@@ -239,6 +282,12 @@ internal object SchemaHtmlDocRenderer {
     }
   }
 
+  /**
+   * OSC型を表示用のトークン文字列に変換する。
+   *
+   * @param type 変換対象のOSC型
+   * @return 型のトークン文字列（例: "int", "float", "string"）
+   */
   private fun tokenOf(type: OscType): String {
     return when (type) {
       OscType.INT -> "int"
@@ -249,10 +298,22 @@ internal object SchemaHtmlDocRenderer {
     }
   }
 
+  /**
+   * メッセージ名からHTMLアンカーIDを生成する。
+   *
+   * @param name メッセージ名
+   * @return HTMLアンカーに使用可能なID文字列
+   */
   private fun anchorId(name: String): String {
     return "msg-" + name.lowercase().replace(Regex("[^a-z0-9]+"), "-").trim('-')
   }
 
+  /**
+   * 文字列をHTMLエスケープする。
+   *
+   * @param raw エスケープ対象の生文字列
+   * @return HTMLエスケープされた文字列
+   */
   private fun escape(raw: String): String {
     return raw.replace("&", "&amp;")
         .replace("<", "&lt;")

@@ -14,6 +14,9 @@ object OscTimeTag {
    * Java エポック (1970-01-01 UTC) からのミリ秒を OSC NTP timetag に変換する。
    *
    * NTP エポックは 1900-01-01 UTC。その差は 70年分の秒数。
+   *
+   * @param epochMillis Java エポックからのミリ秒
+   * @return OSC NTP 64-bit タイムタグ値
    */
   fun fromEpochMillis(epochMillis: Long): Long {
     // NTP エポックと Unix エポックの差 (秒)

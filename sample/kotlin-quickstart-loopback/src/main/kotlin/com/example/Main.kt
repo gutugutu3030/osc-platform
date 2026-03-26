@@ -19,6 +19,11 @@ import kotlinx.coroutines.runBlocking
  *
  * `LightColor` は `schema.yaml` から `generateOscSources` タスクが自動生成するクラスです。
  */
+/**
+ * ループバックサンプルのエントリーポイント。
+ *
+ * スキーマを読み込み、UDP トランスポートとランタイムを構築し、 生成型 [LightColor] を使って自分自身へメッセージを送受信する。
+ */
 fun main(): Unit = runBlocking {
   // --- スキーマ読み込み ---
   val schemaPath = Paths.get("schema.kts")

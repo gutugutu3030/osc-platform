@@ -31,12 +31,32 @@ import kotlinx.coroutines.runBlocking
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 
+/**
+ * Web UI の動作モード。
+ *
+ * サーバーの表示・機能を決定する。
+ */
 enum class WebUiMode {
+  /** OSC トラフィックの受信・監視のみを行うモード。 */
   MONITOR,
+
+  /** OSC メッセージの送信を行うモード。 */
   SENDER,
+
+  /** MCP 経由の OSC 操作コンソールモード。 */
   MCP,
 }
 
+/**
+ * Web UI サーバーの設定。
+ *
+ * @property mode UI の動作モード
+ * @property httpPort HTTP サーバーのリスンポート
+ * @property defaultTargetHost OSC 送信先のデフォルトホスト
+ * @property defaultTargetPort OSC 送信先のデフォルトポート
+ * @property initialMessageRef 初期選択するメッセージ参照名（null の場合は未選択）
+ * @property initialArgs 初期引数のマップ
+ */
 data class WebUiServerConfig(
     val mode: WebUiMode,
     val httpPort: Int,
@@ -46,12 +66,30 @@ data class WebUiServerConfig(
     val initialArgs: Map<String, Any?> = emptyMap(),
 )
 
+/**
+ * Web UI のイベントログエントリ。
+ *
+ * @property type イベントの種別文字列
+ * @property message イベントの説明メッセージ
+ * @property details 追加の詳細情報マップ
+ */
 data class WebUiLogEvent(
     val type: String,
     val message: String,
     val details: Map<String, Any?> = emptyMap(),
 )
 
+/**
+ * OSC スキーマ情報を表示し、メッセージ送信・イベント監視を行う組み込み HTTP サーバー。
+ *
+ * HTML UI・REST API・SSE エンドポイントを提供する。
+ *
+ * @param schema 表示・送信対象の OSC スキーマ
+ * @param runtime OSC ランタイムインスタンス
+ * @param config サーバー設定
+ * @param additionalEvents UI に配信する追加イベントの Flow
+ * @param scope コルーチンスコープ
+ */
 class WebUiServer(
     private val schema: OscSchema,
     private val runtime: OscRuntime,
@@ -59,6 +97,7 @@ class WebUiServer(
     private val additionalEvents: Flow<WebUiLogEvent> = emptyFlow(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.IO),
 ) {
+  /** HTTP サーバーがリスンしているポート番号。 */
   val port: Int
     get() = config.httpPort
 
@@ -66,6 +105,7 @@ class WebUiServer(
   private val sseClients = CopyOnWriteArrayList<SseClient>()
   private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
+  /** HTTP サーバーを起動し、ランタイムイベントおよび追加イベントの配信を開始する。 */
   fun start() {
     val server = HttpServer.create(InetSocketAddress(config.httpPort), 0)
     server.createContext("/") { exchange -> dispatch(exchange) }
@@ -89,12 +129,18 @@ class WebUiServer(
     }
   }
 
+  /** HTTP サーバーを停止し、コルーチンスコープをキャンセルする。 */
   fun stop() {
     httpServer?.stop(0)
     httpServer = null
     scope.cancel()
   }
 
+  /**
+   * HTTP リクエストをパスとメソッドに基づいて適切なハンドラに振り分ける。
+   *
+   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   */
   private fun dispatch(exchange: HttpExchange) {
     try {
       val path = exchange.requestURI.path
@@ -113,10 +159,20 @@ class WebUiServer(
     }
   }
 
+  /**
+   * メインの HTML ページを返す。
+   *
+   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   */
   private fun serveHtml(exchange: HttpExchange) {
     sendResponse(exchange, 200, "text/html; charset=utf-8", buildHtml())
   }
 
+  /**
+   * スキーマ情報を JSON 形式で返す。
+   *
+   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   */
   private fun serveSchema(exchange: HttpExchange) {
     val schemaJson =
         mapOf(
@@ -133,6 +189,12 @@ class WebUiServer(
     sendResponse(exchange, 200, "application/json", toJson(schemaJson))
   }
 
+  /**
+   * OSC 引数ノードをフロントエンド向け JSON マップに変換する。
+   *
+   * @param arg 変換対象の引数ノード
+   * @return フロントエンドで使用するフィールド情報のマップ
+   */
   private fun buildArgJson(arg: OscArgNode): Map<String, Any?> {
     return when (arg) {
       is ScalarArgNode -> {
@@ -171,6 +233,12 @@ class WebUiServer(
     }
   }
 
+  /**
+   * OSC 型に対応する HTML input の type 属性値を返す。
+   *
+   * @param type OSC 型
+   * @return HTML input の type 値
+   */
   private fun scalarInputType(type: OscType): String =
       when (type) {
         OscType.INT -> "number"
@@ -180,6 +248,12 @@ class WebUiServer(
         OscType.BLOB -> "text"
       }
 
+  /**
+   * OSC 型に対応する HTML input のプレースホルダー文字列を返す。
+   *
+   * @param type OSC 型
+   * @return プレースホルダー文字列
+   */
   private fun scalarPlaceholder(type: OscType): String =
       when (type) {
         OscType.INT -> "0"
@@ -189,8 +263,20 @@ class WebUiServer(
         OscType.BLOB -> "base64"
       }
 
+  /**
+   * 現在のモードでメッセージ送信が有効かどうかを返す。
+   *
+   * @return 送信が有効なら true
+   */
   private fun sendingEnabled(): Boolean = config.mode != WebUiMode.MONITOR
 
+  /**
+   * OSC メッセージ送信リクエストを処理する。
+   *
+   * リクエストボディから送信先とメッセージ情報を解析し、ランタイム経由で送信する。
+   *
+   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   */
   private fun handleSend(exchange: HttpExchange) {
     if (!sendingEnabled()) {
       sendResponse(
@@ -239,6 +325,13 @@ class WebUiServer(
     }
   }
 
+  /**
+   * SSE イベントストリーム接続を処理する。
+   *
+   * クライアントを登録し、接続が切れるまでイベントを配信し続ける。
+   *
+   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   */
   private fun handleEvents(exchange: HttpExchange) {
     exchange.responseHeaders.add("Content-Type", "text/event-stream")
     exchange.responseHeaders.add("Cache-Control", "no-cache")
@@ -260,6 +353,13 @@ class WebUiServer(
     }
   }
 
+  /**
+   * JSON 文字列を全 SSE クライアントにブロードキャストする。
+   *
+   * 切断されたクライアントはリストから自動的に除去される。
+   *
+   * @param json ブロードキャストする JSON 文字列
+   */
   private fun broadcastJson(json: String) {
     val sseData = "data: $json\n\n"
     val deadClients = mutableListOf<SseClient>()
@@ -271,6 +371,12 @@ class WebUiServer(
     sseClients.removeAll(deadClients)
   }
 
+  /**
+   * ランタイムイベントを SSE 配信用の JSON 文字列にシリアライズする。
+   *
+   * @param event シリアライズ対象のランタイムイベント
+   * @return JSON 文字列
+   */
   private fun serializeRuntimeEvent(event: OscRuntimeEvent): String =
       when (event) {
         is OscRuntimeEvent.Received ->
@@ -334,6 +440,14 @@ class WebUiServer(
             )
       }
 
+  /**
+   * HTTP レスポンスを送信する。
+   *
+   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   * @param status HTTP ステータスコード
+   * @param contentType Content-Type ヘッダー値
+   * @param body レスポンスボディ文字列
+   */
   private fun sendResponse(exchange: HttpExchange, status: Int, contentType: String, body: String) {
     val bytes = body.toByteArray(StandardCharsets.UTF_8)
     exchange.responseHeaders.add("Content-Type", contentType)
@@ -341,8 +455,21 @@ class WebUiServer(
     exchange.responseBody.use { it.write(bytes) }
   }
 
+  /**
+   * オブジェクトを JSON 文字列に変換する。
+   *
+   * @param obj シリアライズ対象のオブジェクト
+   * @return JSON 文字列
+   */
   private fun toJson(obj: Any?): String = mapper.writeValueAsString(obj)
 
+  /**
+   * Web UI のメイン HTML ページを生成する。
+   *
+   * スキーマ情報と設定を埋め込んだシングルページ HTML を構築する。
+   *
+   * @return 完全な HTML 文字列
+   */
   private fun buildHtml(): String {
     val messagesJs =
         schema.messages.joinToString(",\n") { spec ->
@@ -652,13 +779,31 @@ class WebUiServer(
   }
 }
 
+/**
+ * SSE クライアント接続を管理するクラス。
+ *
+ * キューベースでイベントデータを書き込み、接続が切れた場合は自動的に検出する。
+ *
+ * @param writer クライアントへの出力ライター
+ */
 private class SseClient(private val writer: PrintWriter) {
   private val queue = LinkedBlockingQueue<String>(1024)
 
+  /**
+   * データをキューに追加して送信予約する。
+   *
+   * @param data 送信する SSE データ文字列
+   * @return キューへの追加に成功した場合 true
+   */
   fun send(data: String): Boolean {
     return queue.offer(data)
   }
 
+  /**
+   * キューからデータを取り出してクライアントに書き込むループ。
+   *
+   * 接続が切れるか書き込みエラーが発生するまでブロッキングで実行される。
+   */
   fun writeLoop() {
     while (true) {
       val data = queue.poll(5, TimeUnit.SECONDS)

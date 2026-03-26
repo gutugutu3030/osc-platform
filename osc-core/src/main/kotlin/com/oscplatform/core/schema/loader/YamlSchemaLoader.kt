@@ -65,6 +65,11 @@ private data class YamlTupleField(
 
 val test = YAMLFactory()
 
+/**
+ * YAML形式のスキーマファイルからOSCスキーマを読み込むローダー。
+ *
+ * @param mapper YAMLパース用のObjectMapper
+ */
 class YamlSchemaLoader(
     private val mapper: ObjectMapper =
         YAMLMapper.builder()
@@ -72,6 +77,12 @@ class YamlSchemaLoader(
             .disable(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES)
             .build(),
 ) {
+  /**
+   * 指定されたパスのYAMLスキーマファイルを読み込み、[OscSchema] として返す。
+   *
+   * @param path YAMLスキーマファイルのパス
+   * @return 読み込まれた [OscSchema]
+   */
   fun load(path: Path): OscSchema {
     val doc = path.inputStream().use { mapper.readValue<YamlSchemaDocument>(it) }
     val messages =
@@ -110,6 +121,14 @@ class YamlSchemaLoader(
     return OscSchema(messages = messages, bundles = bundles)
   }
 
+  /**
+   * YAML引数定義をパースして [OscArgNode][com.oscplatform.core.schema.OscArgNode] に変換する。
+   *
+   * @param arg YAML引数データ
+   * @param messagePath 所属するメッセージのパス（エラーメッセージ用）
+   * @return パースされた引数ノード
+   * @throws IllegalArgumentException 引数定義が不正な場合
+   */
   private fun parseArg(arg: YamlArg, messagePath: String): com.oscplatform.core.schema.OscArgNode {
     require(arg.name.isNotBlank()) { "Arg name cannot be blank in message '$messagePath'" }
 
@@ -160,6 +179,14 @@ class YamlSchemaLoader(
     }
   }
 
+  /**
+   * YAML配列要素定義をパースして [ArrayItemSpec] に変換する。
+   *
+   * @param arg 配列引数のYAMLデータ
+   * @param messagePath 所属するメッセージのパス（エラーメッセージ用）
+   * @return パースされた配列要素仕様
+   * @throws IllegalArgumentException 要素定義が不正な場合
+   */
   private fun parseArrayItem(arg: YamlArg, messagePath: String): ArrayItemSpec {
     val items =
         arg.items
