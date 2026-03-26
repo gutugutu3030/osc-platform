@@ -21,4 +21,16 @@ class JarIsolationTest {
     val cls = Class.forName("com.oscplatform.adapter.webui.WebUiAdapter")
     assertNotNull(cls)
   }
+
+  @Test
+  fun distributionClasspathContainsSchemaEditorServer() {
+    val cls = Class.forName("com.oscplatform.adapter.webui.SchemaEditorServer")
+    assertNotNull(cls)
+  }
+
+  @Test
+  fun distributionClasspathContainsSchemaEditorAdapter() {
+    val cls = Class.forName("com.oscplatform.adapter.webui.SchemaEditorAdapter")
+    assertNotNull(cls)
+  }
 }
