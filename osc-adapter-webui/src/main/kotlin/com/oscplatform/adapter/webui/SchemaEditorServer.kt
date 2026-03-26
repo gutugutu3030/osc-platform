@@ -103,7 +103,20 @@ class SchemaEditorServer(
    */
   private fun handleEvaluate(exchange: HttpExchange) {
     val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
-    val req = mapper.readValue(body, Map::class.java)
+
+    // リクエストボディの JSON 解析
+    val req =
+        try {
+          mapper.readValue(body, Map::class.java)
+        } catch (e: Exception) {
+          sendResponse(
+              exchange,
+              400,
+              "application/json",
+              toJson(mapOf("success" to false, "error" to "Invalid JSON: ${e.message}")),
+          )
+          return
+        }
     val dslText = req["dsl"] as? String
 
     if (dslText.isNullOrBlank()) {

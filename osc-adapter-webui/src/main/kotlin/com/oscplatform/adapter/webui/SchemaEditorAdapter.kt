@@ -1,6 +1,8 @@
 package com.oscplatform.adapter.webui
 
 import java.io.PrintStream
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.awaitCancellation
 
 /**
  * スキーマエディタ アダプター。
@@ -48,8 +50,8 @@ class SchemaEditorAdapter(
       Runtime.getRuntime().addShutdownHook(Thread { server.stop() })
 
       // メインスレッドをブロックしてサーバーを維持
-      kotlinx.coroutines.awaitCancellation()
-    } catch (ex: kotlinx.coroutines.CancellationException) {
+      awaitCancellation()
+    } catch (ex: CancellationException) {
       throw ex
     } catch (ex: EditorUsageException) {
       err.println("error: ${ex.message}")
