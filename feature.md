@@ -388,6 +388,9 @@ oscSchemaCodegen {
 
 この条件を満たせば、IDE上で通常の手書きクラスと同等に補完される。
 
+DSL レベルでも `@OscSchemaDslMarker`（`@DslMarker`）によるスコープ制御が有効なため、
+`schema.kts` 編集時に各ブロック内で適切なキーワードのみが補完候補に表示される。
+
 ---
 
 # 既存OSCアプリからの移行手順

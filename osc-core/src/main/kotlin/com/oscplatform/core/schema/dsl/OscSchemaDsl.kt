@@ -13,6 +13,17 @@ import com.oscplatform.core.schema.ScalarArgNode
 import com.oscplatform.core.schema.ScalarRole
 import com.oscplatform.core.schema.TupleFieldSpec
 
+/**
+ * OSC スキーマ DSL のスコープ制御用マーカーアノテーション。
+ *
+ * このアノテーションが付与されたビルダークラスは、ネストされたラムダ内で 外側のレシーバーのメンバーへ暗黙的にアクセスすることを禁止する。 外側のスコープにアクセスする場合はラベル付き
+ * `this` (`this@OuterBuilder`) を 明示的に指定する必要がある。
+ *
+ * これにより、IDE の補完候補が現在のスコープのメンバーのみに絞り込まれ、 DSL の誤用（例: `message {}` ブロック内で `bundle()` を呼ぶなど）を
+ * コンパイル時に検出できる。
+ */
+@DslMarker @Target(AnnotationTarget.CLASS) annotation class OscSchemaDslMarker
+
 /** DSLで使用する [OscType.INT] のエイリアス。 */
 val INT: OscType = OscType.INT
 
@@ -35,6 +46,7 @@ val VALUE: ScalarRole = ScalarRole.VALUE
 val LENGTH: ScalarRole = ScalarRole.LENGTH
 
 /** OSCスキーマをDSLで構築するためのビルダークラス。 */
+@OscSchemaDslMarker
 class OscSchemaBuilder {
   private val messages = mutableListOf<OscMessageSpec>()
   private val bundles = mutableListOf<OscBundleSpec>()
@@ -77,6 +89,7 @@ class OscSchemaBuilder {
  *
  * @param rawPath 未正規化のOSCアドレスパス
  */
+@OscSchemaDslMarker
 class OscMessageBuilder(
     private val rawPath: String,
 ) {
@@ -186,6 +199,7 @@ class OscMessageBuilder(
 }
 
 /** 配列要素をDSLで構築するためのビルダークラス。 */
+@OscSchemaDslMarker
 class ArrayItemBuilder {
   private var item: ArrayItemSpec? = null
 
@@ -224,6 +238,7 @@ class ArrayItemBuilder {
 }
 
 /** タプルフィールドをDSLで構築するためのビルダークラス。 */
+@OscSchemaDslMarker
 class TupleFieldBuilder {
   private val fields = mutableListOf<TupleFieldSpec>()
 
@@ -262,6 +277,7 @@ fun oscSchema(block: OscSchemaBuilder.() -> Unit): OscSchema {
  *
  * @param rawName 未整形のバンドル名
  */
+@OscSchemaDslMarker
 class OscBundleBuilder(private val rawName: String) {
   private var textDescription: String? = null
   private val refs = mutableListOf<String>()

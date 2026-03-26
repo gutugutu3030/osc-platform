@@ -62,6 +62,60 @@ oscSchema {
 }
 ```
 
+### @OscSchemaDslMarker によるスコープ制御
+
+すべてのビルダークラスには `@OscSchemaDslMarker`（`@DslMarker` メタアノテーション付き）が付与されています。
+これにより、ネストされたラムダ内で **外側のレシーバーのメンバーが暗黙的に補完・呼び出しされることが防止** されます。
+
+```kotlin
+oscSchema {
+    message("/example") {
+        scalar("x", INT)
+        // ✅ message {} ブロック内では scalar / arg / array / name / description のみ補完される
+        // ❌ bundle() は補完候補に現れない（@DslMarker によるスコープ制御）
+    }
+}
+```
+
+外側のスコープに明示的にアクセスしたい場合は、ラベル付き `this` を使用してください:
+
+```kotlin
+oscSchema {
+    message("/example") {
+        scalar("x", INT)
+        this@oscSchema.message("/other") { /* ... */ }  // 明示的な外側スコープへのアクセス
+    }
+}
+```
+
+### IDE 補完を有効にするためのセットアップ
+
+DSL の補完を IDE で利用するには、以下のいずれかのセットアップが必要です。
+
+#### 方法 1: Gradle プロジェクトから依存 (推奨)
+
+`build.gradle.kts` で `osc-core` を依存に追加するだけで、自動的に補完が効きます。
+
+```kotlin
+dependencies {
+    implementation("com.oscplatform:osc-core:<version>")
+}
+```
+
+IntelliJ IDEA / Android Studio で Gradle プロジェクトを同期 (**Reload Gradle Project**) すると、
+`oscSchema { }` ブロック内のキーワード（`message`、`scalar`、`array` など）が補完候補に表示されます。
+
+#### 方法 2: `.kts` スクリプトファイルでの補完
+
+`schema.kts` ファイル内で補完を有効にするには、IntelliJ IDEA の **Kotlin Script** サポートを利用します。
+
+1. プロジェクトルートに `schema.kts` を配置する
+2. IntelliJ IDEA でプロジェクトを開き、Gradle 同期を実行する
+3. `schema.kts` を開くと、`kotlin-scripting-jsr223` により DSL の補完が有効になる
+
+> **補足**: `.kts` ファイル内の補完精度は Kotlin Script エンジンの制約を受けます。
+> 最も正確な補完が必要な場合は、方法 1 の Gradle 依存を推奨します。
+
 ## スキーマローダ
 
 `SchemaLoader` は `.kts` / `.yaml` / `.yml` を自動判別してロードします。
