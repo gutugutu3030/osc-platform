@@ -388,3 +388,5 @@ $OSC send light.rgb --r 255 --g 0 --b 0 --a 0.5
 
 `schema.kts` を書けば、CLI/MCP/将来のUIまで同じ仕様で拡張できる。  
 **OSCの自由さを保ったまま、チーム開発に耐える基盤にする。**
+
+📖 スキーマの書き方の詳細: [docs/schema-guide.md](https://github.com/gutugutu3030/osc-platform/blob/main/docs/schema-guide.md)
