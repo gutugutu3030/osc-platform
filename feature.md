@@ -244,6 +244,8 @@ style: |
 
 # 具体例: schema
 
+> 📖 スキーマ記法の詳細は [docs/schema-guide.md](docs/schema-guide.md) を参照
+
 ```yaml
 messages:
   - path: /light/color
