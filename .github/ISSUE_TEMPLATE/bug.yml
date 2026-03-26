@@ -1,0 +1,45 @@
+name: バグ修正
+description: バグを報告・修正するためのテンプレート
+title: "[Bug]: "
+labels: ["bug"]
+body:
+  - type: textarea
+    id: background
+    attributes:
+      label: 背景
+      description: バグの概要や発生状況を説明してください
+      placeholder: 例：〇〇の画面で△△を操作すると、□□というエラーが発生する
+    validations:
+      required: true
+
+  - type: textarea
+    id: fix-request
+    attributes:
+      label: 期待する修正内容
+      description: バグを修正するために行って欲しい対応を具体的に記述してください
+      placeholder: |
+        例：
+        - 〇〇の処理でnullチェックを追加する
+        - エラーメッセージを画面に表示する
+    validations:
+      required: true
+
+  - type: textarea
+    id: restrictions
+    attributes:
+      label: 禁止事項
+      description: 修正にあたって行ってはいけないことを記述してください
+      placeholder: |
+        例：
+        - 他の機能に影響を与える変更
+        - 大規模なリファクタ
+    validations:
+      required: false
+
+  - type: checkboxes
+    id: breaking-changes
+    attributes:
+      label: 破壊的変更
+      description: 既存の動作・インターフェースを壊す変更を許可するかどうか
+      options:
+        - label: 破壊的変更を許可する
