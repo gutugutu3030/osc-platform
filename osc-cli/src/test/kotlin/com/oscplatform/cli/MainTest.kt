@@ -16,6 +16,7 @@ class MainTest {
     assertTrue(usage.contains("osc gen"))
     assertTrue(usage.contains("osc mcp"))
     assertTrue(usage.contains("osc webui"))
+    assertTrue(usage.contains("osc editor"))
     assertTrue(usage.contains("osc version"))
     assertTrue(usage.contains("osc --version"))
     assertTrue(usage.contains("osc help"))

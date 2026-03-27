@@ -2,6 +2,7 @@ package com.oscplatform.cli
 
 import com.oscplatform.adapter.cli.CliAdapter
 import com.oscplatform.adapter.mcp.McpAdapter
+import com.oscplatform.adapter.webui.SchemaEditorAdapter
 import com.oscplatform.adapter.webui.WebUiAdapter
 import kotlin.system.exitProcess
 import kotlinx.coroutines.runBlocking
@@ -23,24 +24,26 @@ fun main(args: Array<String>) = runBlocking {
   val cliAdapter = CliAdapter()
   val mcpAdapter = McpAdapter()
   val webUiAdapter = WebUiAdapter()
+  val editorAdapter = SchemaEditorAdapter()
 
   val exitCode =
       when (val command = args.firstOrNull()) {
         "mcp" -> mcpAdapter.execute(args.drop(1))
         "webui" -> webUiAdapter.execute(args.drop(1))
+        "editor" -> editorAdapter.execute(args.drop(1))
         null -> {
-          printTopLevelUsage(cliAdapter, mcpAdapter, webUiAdapter)
+          printTopLevelUsage(cliAdapter, mcpAdapter, webUiAdapter, editorAdapter)
           1
         }
         in helpFlags -> {
-          printTopLevelUsage(cliAdapter, mcpAdapter, webUiAdapter)
+          printTopLevelUsage(cliAdapter, mcpAdapter, webUiAdapter, editorAdapter)
           0
         }
         in versionFlags -> cliAdapter.execute(listOf("version"))
         in cliAdapter.commandNames() -> cliAdapter.execute(args.toList())
         else -> {
           System.err.println("error: Unknown command: $command")
-          printTopLevelUsage(cliAdapter, mcpAdapter, webUiAdapter)
+          printTopLevelUsage(cliAdapter, mcpAdapter, webUiAdapter, editorAdapter)
           1
         }
       }
@@ -58,16 +61,19 @@ fun main(args: Array<String>) = runBlocking {
  * @param cliAdapter CLI アダプター
  * @param mcpAdapter MCP アダプター
  * @param webUiAdapter Web UI アダプター
+ * @param editorAdapter スキーマエディタアダプター
  * @return 使用方法のテキスト
  */
 internal fun buildTopLevelUsage(
     cliAdapter: CliAdapter = CliAdapter(),
     mcpAdapter: McpAdapter = McpAdapter(),
     webUiAdapter: WebUiAdapter = WebUiAdapter(),
+    editorAdapter: SchemaEditorAdapter = SchemaEditorAdapter(),
 ): String = buildString {
   cliAdapter.commandSummaries().forEach { appendLine(it) }
   appendLine(mcpAdapter.commandSummary())
   appendLine(webUiAdapter.commandSummary())
+  appendLine(editorAdapter.commandSummary())
   appendLine("osc --version")
   append("osc help")
 }
@@ -78,11 +84,13 @@ internal fun buildTopLevelUsage(
  * @param cliAdapter CLI アダプター
  * @param mcpAdapter MCP アダプター
  * @param webUiAdapter Web UI アダプター
+ * @param editorAdapter スキーマエディタアダプター
  */
 private fun printTopLevelUsage(
     cliAdapter: CliAdapter,
     mcpAdapter: McpAdapter,
     webUiAdapter: WebUiAdapter,
+    editorAdapter: SchemaEditorAdapter,
 ) {
-  println(buildTopLevelUsage(cliAdapter, mcpAdapter, webUiAdapter))
+  println(buildTopLevelUsage(cliAdapter, mcpAdapter, webUiAdapter, editorAdapter))
 }
