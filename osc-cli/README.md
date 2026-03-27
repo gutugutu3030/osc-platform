@@ -82,7 +82,7 @@ osc doc   [schemaPath] [--schema <path>] [--out <path>] [--format html|markdown]
 osc list  [schemaPath] [--schema <path>]
 osc validate [schemaPath] [--schema <path>]
 osc gen   [schemaPath] [--schema <path>] --package <packageName> [--lang kotlin] [--out <path>]
-osc mcp   [schemaPath] [--schema <path>] --host <host> --port <port> [--webui] [--webui-port <port>]
+osc mcp   [schemaPath] [--schema <path>] --host <host> --port <port> [--streamable-http-port <port>] [--listen-host <host>] [--webui] [--webui-port <port>]
 osc version
 osc --version
 osc help
@@ -143,12 +143,20 @@ osc gen schema.yaml --package com.example.osc.generated --out build/generated/so
 
 詳細: [`osc-adapter-cli`](../osc-adapter-cli/README.md#gen--kotlin-型安全クラス生成)
 
-### `mcp` — MCP stdio サーバ起動
+### `mcp` — MCP stdio / Streamable HTTP サーバ起動
 
 ```bash
 osc mcp schema.yaml --host 127.0.0.1 --port 9000
+osc mcp schema.yaml --host 127.0.0.1 --port 9000 --streamable-http-port 8081
+osc mcp schema.yaml --host 127.0.0.1 --port 9000 --streamable-http-port 8081 --listen-host 0.0.0.0
 osc mcp schema.yaml --host 127.0.0.1 --port 9000 --webui --webui-port 18082
 ```
+
+補足:
+
+- `--streamable-http-port` を付けると `/mcp` エンドポイントで Streamable HTTP を待ち受けます
+- `--listen-host` の既定値は `127.0.0.1` です
+- `--host` / `--port` は OSC の送信先であり、HTTP の待受先ではありません
 
 詳細: [`osc-adapter-mcp`](../osc-adapter-mcp/README.md)
 
