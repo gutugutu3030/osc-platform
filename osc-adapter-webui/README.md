@@ -60,7 +60,7 @@ osc mcp schema.yaml --host 127.0.0.1 --port 9000 --webui --webui-port 18082
 
 ### sender mode の画面例
 
-![`osc send --webui` の画面例](https://github.com/user-attachments/assets/f20cb3dd-a09a-40b9-a4e6-e8263bf3fe15)
+![osc send --webui の画面例](https://github.com/user-attachments/assets/f20cb3dd-a09a-40b9-a4e6-e8263bf3fe15)
 
 `osc send --webui` と `osc mcp --webui` は、左にメッセージ一覧、中央に入力フォーム、下部に Event Log を持つ共通レイアウトです。  
 `osc run --webui` も同じ導線で確認できますが、monitor mode では送信機能だけが無効になります。
@@ -78,7 +78,7 @@ osc send light.color --schema sample/kotlin-quickstart-loopback/schema.kts --hos
 3. 中央のフォームで引数と `Target Host` / `Target Port` を確認・編集します。
 4. **Send** を押して送信し、下部の **Event Log** で `sending` / `sent` / `failed` を確認します。
 
-`messageRef` や `--r 255 --g 0 --b 128` のような CLI 引数は、画面の初期値としてそのまま反映されます。
+先頭の `light.color` のような message 指定と、`--r 255 --g 0 --b 128` のような CLI 引数は、画面の初期値としてそのまま反映されます。
 
 ### `osc run --webui`
 
