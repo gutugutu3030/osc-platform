@@ -196,12 +196,24 @@ Kotlin DSL でスキーマを記述し、リアルタイムで構造を確認で
 
 バックエンドは Ktor CIO を使用し、エディタ HTML は classpath リソース (`editor/index.html`) として配信します。
 
+### 画面イメージ
+
+![osc editor の補完ポップアップとプレビュー](https://github.com/user-attachments/assets/08fb89be-6ee1-42fb-b736-949be44ff228)
+
 ### 起動方法
 
 ```bash
 osc editor                # デフォルトポート 3000 で起動
 osc editor --port 8080    # ポートを指定して起動
 ```
+
+### 基本的な使い方
+
+1. `osc editor` を起動してブラウザで開きます。
+2. 左の **Kotlin DSL Editor** に `oscSchema { ... }` を入力するか、**サンプルを挿入** で雛形を読み込みます。
+3. 入力内容は自動評価され、右の **Schema Preview** に message / args / bundle がリアルタイム表示されます。
+4. 補完候補を見たい位置で入力を始めるか `Ctrl+Space` を押すと、コンテキストに応じた候補が表示されます。
+5. 候補は ↑↓ で選択し、Tab または Enter で確定します。構文エラーがある場合はプレビュー領域にエラーが表示されます。
 
 ### 機能
 
