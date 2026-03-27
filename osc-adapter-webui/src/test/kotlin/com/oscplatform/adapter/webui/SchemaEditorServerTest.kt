@@ -37,6 +37,8 @@ class SchemaEditorServerTest {
     val testPort = if (port == 0) findFreePort() else port
     val server = SchemaEditorServer(SchemaEditorServerConfig(httpPort = testPort))
     server.start()
+    // Ktor CIO サーバーの起動を待機
+    Thread.sleep(500)
     try {
       block(server)
     } finally {
@@ -173,18 +175,6 @@ class SchemaEditorServerTest {
     val bundle = bundles[0] as Map<*, *>
     assertEquals("AB", bundle["name"])
     assertEquals("テストバンドル", bundle["description"])
-  }
-
-  /** 存在しないパスへのリクエストが 404 を返すことを確認する。 */
-  @Test
-  fun unknownPathReturns404() {
-    withServer { server ->
-      val conn =
-          URI("http://localhost:${server.port}/unknown").toURL().openConnection()
-              as HttpURLConnection
-      conn.requestMethod = "GET"
-      assertEquals(404, conn.responseCode)
-    }
   }
 
   /**

@@ -147,6 +147,8 @@ monitor mode での失敗例:
 
 Kotlin DSL でスキーマを記述し、リアルタイムで構造を確認できる Web エディタです。
 
+バックエンドは Ktor CIO を使用し、エディタ HTML は classpath リソース (`editor/index.html`) として配信します。
+
 ### 起動方法
 
 ```bash
@@ -166,11 +168,19 @@ osc editor --port 8080    # ポートを指定して起動
 - エラー時はエラーメッセージを表示
 - サンプルテンプレートを挿入可能
 
+### 技術構成
+
+| 層 | 技術 |
+|---|---|
+| HTTP サーバー | Ktor CIO |
+| エディタ UI | HTML / CSS / JavaScript（`src/main/resources/editor/index.html`） |
+| DSL 評価 | `kotlin-scripting-jsr223` |
+
 ### HTTP API
 
 #### `GET /`
 
-エディタ HTML を返します。
+エディタ HTML を classpath リソースから返します。
 
 #### `POST /api/evaluate`
 
