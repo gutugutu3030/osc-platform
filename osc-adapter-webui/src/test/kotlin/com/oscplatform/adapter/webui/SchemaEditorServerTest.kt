@@ -37,13 +37,38 @@ class SchemaEditorServerTest {
     val testPort = if (port == 0) findFreePort() else port
     val server = SchemaEditorServer(SchemaEditorServerConfig(httpPort = testPort))
     server.start()
-    // Ktor CIO サーバーの起動を待機
-    Thread.sleep(500)
+    // Ktor CIO サーバーの起動をリトライポーリングで待機
+    awaitServerReady(testPort)
     try {
       block(server)
     } finally {
       server.stop()
     }
+  }
+
+  /**
+   * サーバーがリクエストを受け付けられるまでリトライする。
+   *
+   * @param port 接続先ポート番号
+   * @param maxRetries 最大リトライ回数
+   * @param intervalMs リトライ間隔（ミリ秒）
+   */
+  private fun awaitServerReady(port: Int, maxRetries: Int = 20, intervalMs: Long = 100) {
+    repeat(maxRetries) {
+      try {
+        val conn =
+            java.net.URI("http://localhost:$port/").toURL().openConnection()
+                as java.net.HttpURLConnection
+        conn.connectTimeout = 200
+        conn.readTimeout = 200
+        conn.responseCode
+        conn.disconnect()
+        return
+      } catch (_: Exception) {
+        Thread.sleep(intervalMs)
+      }
+    }
+    error("Server on port $port did not become ready within ${maxRetries * intervalMs}ms")
   }
 
   /**

@@ -16,6 +16,7 @@ import io.ktor.server.engine.embeddedServer
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
+import io.ktor.server.routing.RoutingCall
 import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
@@ -63,6 +64,8 @@ class SchemaEditorServer(
    * ルーティング:
    * - `GET /` — エディタ HTML（classpath リソース `editor/index.html`）を返す
    * - `POST /api/evaluate` — DSL テキストを評価してスキーマ JSON を返す
+   *
+   * @throws IllegalStateException エディタ HTML リソースが classpath に存在しない場合
    */
   fun start() {
     val server =
@@ -82,9 +85,13 @@ class SchemaEditorServer(
     ktorServer = server
   }
 
-  /** HTTP サーバーを停止する。 */
+  /**
+   * HTTP サーバーを停止する。
+   *
+   * Ktor サーバーに対して猶予期間 1 秒・最大待機 2 秒で graceful shutdown を実行する。
+   */
   fun stop() {
-    ktorServer?.stop(1000, 2000)
+    ktorServer?.stop(gracePeriodMillis = 1000, timeoutMillis = 2000)
     ktorServer = null
   }
 
@@ -102,11 +109,12 @@ class SchemaEditorServer(
   /**
    * DSL テキストを評価してスキーマ JSON を返す Ktor ハンドラ。
    *
-   * リクエストボディの `dsl` フィールドから DSL テキストを取得し、 Kotlin スクリプトエンジンで評価して結果を返す。
+   * リクエストボディの `dsl` フィールドから DSL テキストを取得し、 Kotlin スクリプトエンジンで評価して結果を返す。 JSON 解析エラー・DSL
+   * 未指定・評価エラーはすべてレスポンスとして返し、例外は伝播しない。
    *
-   * @param call Ktor の ApplicationCall
+   * @param call Ktor の RoutingCall
    */
-  private suspend fun handleEvaluate(call: io.ktor.server.routing.RoutingCall) {
+  private suspend fun handleEvaluate(call: RoutingCall) {
     val body = call.receiveText()
 
     // リクエストボディの JSON 解析
