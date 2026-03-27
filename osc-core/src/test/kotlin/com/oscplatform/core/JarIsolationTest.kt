@@ -5,10 +5,10 @@ import kotlin.test.assertFailsWith
 import kotlin.test.assertNotNull
 
 /**
- * osc-core の classpath に webserver 関連クラスが含まれないことを確認するテスト。
+ * osc-core テスト classpath のスモーク確認。
  *
- * WebUiServer は osc-adapter-webui に属し、osc-core はそのモジュールに依存しないため、 osc-core のテスト classpath からは
- * WebUiServer クラスをロードできないはずである。
+ * このテストはビルドの依存構成が意図通りであることを確認するためのスモークテストである。 配布物や依存境界の厳密な保証は別レイヤー（CI/CD、Gradle dependency
+ * verification 等）で担保する前提とする。
  */
 class JarIsolationTest {
 
