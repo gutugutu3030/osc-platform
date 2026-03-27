@@ -1,6 +1,6 @@
 # osc-adapter-webui
 
-`run` / `send` / `mcp` に埋め込まれる Web UI サーバを提供するアダプタモジュールです。  
+`run` / `send` / `mcp` に埋め込まれる Web UI サーバと、スキーマエディタを提供するアダプタモジュールです。  
 単独コマンド `osc webui` も互換目的で残っていますが、現在は deprecated です。
 
 ## 役割
@@ -11,6 +11,8 @@
   - 送信先とメッセージをブラウザから操作する sender mode
 - `osc mcp --webui`
   - MCP request / success / failure を見ながら OSC 送信テストを行う mcp mode
+- `osc editor`
+  - ブラウザ上で Kotlin DSL スキーマを記述し、リアルタイムでスキーマ構造を確認できるエディタ
 
 ## 起動契約
 
@@ -141,11 +143,96 @@ monitor mode での失敗例:
 }
 ```
 
+## Schema Editor (`osc editor`)
+
+Kotlin DSL でスキーマを記述し、リアルタイムで構造を確認できる Web エディタです。
+
+バックエンドは Ktor CIO を使用し、エディタ HTML は classpath リソース (`editor/index.html`) として配信します。
+
+### 起動方法
+
+```bash
+osc editor                # デフォルトポート 3000 で起動
+osc editor --port 8080    # ポートを指定して起動
+```
+
+### 機能
+
+- 左ペイン: Kotlin DSL エディタ（`oscSchema { ... }` を直接入力）
+- 右ペイン: スキーマプレビュー（メッセージ・引数・バンドルをリアルタイム表示）
+- 入力時にデバウンスしてバックエンドで DSL を評価
+- コンテキスト対応のコード補完（入力中に候補が自動表示、Ctrl+Space で明示起動）
+  - スコープに応じた関数候補（`oscSchema` / `message` / `scalar` / `array` / `tuple` / `bundle` 等）
+  - 括弧内では型定数（`INT` / `FLOAT` / `STRING` / `BOOL` / `BLOB`）・ロール（`LENGTH` / `VALUE`）・名前付きパラメータを候補表示
+  - ↑↓ で選択、Tab/Enter で確定、Esc で閉じる
+- エラー時はエラーメッセージを表示
+- サンプルテンプレートを挿入可能
+
+### 技術構成
+
+| 層 | 技術 |
+|---|---|
+| HTTP サーバー | Ktor CIO |
+| エディタ UI | HTML / CSS / JavaScript（`src/main/resources/editor/index.html`） |
+| DSL 評価 | `kotlin-scripting-jsr223` |
+
+### HTTP API
+
+#### `GET /`
+
+エディタ HTML を classpath リソースから返します。
+
+#### `POST /api/evaluate`
+
+DSL テキストを評価してスキーマ JSON を返します。
+
+リクエスト例:
+
+```json
+{
+  "dsl": "oscSchema {\n    message(\"/light/color\") {\n        scalar(\"r\", INT)\n    }\n}"
+}
+```
+
+成功例:
+
+```json
+{
+  "success": true,
+  "schema": {
+    "messages": [
+      {
+        "path": "/light/color",
+        "name": "light.color",
+        "description": "",
+        "args": [{ "name": "r", "kind": "scalar", "type": "int", "role": "value", "typeLabel": "r: int" }]
+      }
+    ],
+    "bundles": []
+  }
+}
+```
+
+エラー例:
+
+```json
+{
+  "success": false,
+  "error": "error message"
+}
+```
+
+### 制約
+
+- スキーマの記述・可視化のみを行います（OSC 送受信は対象外）
+- 将来の拡張で送受信機能を追加可能な設計です
+
 ## 依存関係
 
 ```
 osc-adapter-webui
-└── osc-core
+├── osc-core
+└── kotlin-scripting-jsr223
 ```
 
 ## 制約
