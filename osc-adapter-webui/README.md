@@ -56,6 +56,53 @@ osc mcp schema.yaml --host 127.0.0.1 --port 9000 --webui --webui-port 18082
 - `tools/call` の success / failure を表示します
 - sender mode と同じ送信フォームを使って OSC の手動送信テストも行えます
 
+## 画面イメージと基本的な使い方
+
+### sender mode の画面例
+
+![`osc send --webui` の画面例](https://github.com/user-attachments/assets/f20cb3dd-a09a-40b9-a4e6-e8263bf3fe15)
+
+`osc send --webui` と `osc mcp --webui` は、左にメッセージ一覧、中央に入力フォーム、下部に Event Log を持つ共通レイアウトです。  
+`osc run --webui` も同じ導線で確認できますが、monitor mode では送信機能だけが無効になります。
+
+### `osc send --webui`
+
+最も分かりやすい入口は sender mode です。
+
+```bash
+osc send light.color --schema sample/kotlin-quickstart-loopback/schema.kts --host 127.0.0.1 --port 9000 --webui --webui-port 19080 --r 255 --g 0 --b 128
+```
+
+1. コマンド実行後に表示される `Web UI: http://localhost:19080` をブラウザで開きます。
+2. 左の **Messages** から送信したい message を選びます。
+3. 中央のフォームで引数と `Target Host` / `Target Port` を確認・編集します。
+4. **Send** を押して送信し、下部の **Event Log** で `sending` / `sent` / `failed` を確認します。
+
+`messageRef` や `--r 255 --g 0 --b 128` のような CLI 引数は、画面の初期値としてそのまま反映されます。
+
+### `osc run --webui`
+
+```bash
+osc run sample/kotlin-quickstart-loopback/schema.kts --webui --webui-port 19080
+```
+
+1. 起動ログに表示された URL をブラウザで開きます。
+2. 左の **Messages** で、受信対象として定義されている message を確認します。
+3. 別ターミナルや別プロセスから OSC を送ると、下部の **Event Log** に `received` イベントが追加されます。
+4. monitor mode では送信フォームは確認用で、送信 API は無効です。
+
+「受信側を `osc run --webui` で監視しながら、送信側を `osc send --webui` で操作する」という使い方をすると、ローカル検証がしやすくなります。
+
+### `osc mcp --webui`
+
+```bash
+osc mcp sample/kotlin-mcp-stdio/schema.yaml --host 127.0.0.1 --port 9000 --webui --webui-port 18082
+```
+
+1. MCP クライアントを接続すると、`initialize` / `tools/list` / `tools/call` が **Event Log** に流れます。
+2. `tools/call` の成功・失敗が色付きで表示されるため、MCP ツール呼び出しと OSC 送信結果を同じ画面で追えます。
+3. 必要に応じて中央の送信フォームから手動で OSC を送り、MCP 経由の動作と見比べます。
+
 ## HTTP API
 
 ### `GET /`
