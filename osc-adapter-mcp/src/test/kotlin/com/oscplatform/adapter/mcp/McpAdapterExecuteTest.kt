@@ -12,10 +12,12 @@ import java.nio.file.Path
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertTrue
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
 import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeout
 
 /** McpAdapter の CLI 分岐と起動モード選択を検証するテスト。 */
 class McpAdapterExecuteTest {
@@ -54,23 +56,25 @@ class McpAdapterExecuteTest {
         )
 
     val exitCode =
-        adapter.execute(
-            args =
-                listOf(
-                    "--schema",
-                    schemaPath,
-                    "--host",
-                    "127.0.0.1",
-                    "--port",
-                    "9000",
-                    "--webui",
-                    "--webui-port",
-                    webUiPort.toString(),
-                ),
-            input = ByteArrayInputStream(byteArrayOf()),
-            output = ByteArrayOutputStream(),
-            transport = NoopTransport(),
-        )
+        withTimeout(10.seconds) {
+          adapter.execute(
+              args =
+                  listOf(
+                      "--schema",
+                      schemaPath,
+                      "--host",
+                      "127.0.0.1",
+                      "--port",
+                      "9000",
+                      "--webui",
+                      "--webui-port",
+                      webUiPort.toString(),
+                  ),
+              input = ByteArrayInputStream(byteArrayOf()),
+              output = ByteArrayOutputStream(),
+              transport = NoopTransport(),
+          )
+        }
 
     assertEquals(0, exitCode)
     assertTrue(errBuffer.toString().contains("Web UI: http://localhost:$webUiPort"))
@@ -88,12 +92,22 @@ class McpAdapterExecuteTest {
         )
 
     val exitCode =
-        adapter.execute(
-            args = listOf("--host", "127.0.0.1", "--port", "9000", "--listen-host", "0.0.0.0"),
-            input = ByteArrayInputStream(byteArrayOf()),
-            output = ByteArrayOutputStream(),
-            transport = NoopTransport(),
-        )
+        withTimeout(10.seconds) {
+          adapter.execute(
+              args =
+                  listOf(
+                      "--host",
+                      "127.0.0.1",
+                      "--port",
+                      "9000",
+                      "--listen-host",
+                      "0.0.0.0",
+                  ),
+              input = ByteArrayInputStream(byteArrayOf()),
+              output = ByteArrayOutputStream(),
+              transport = NoopTransport(),
+          )
+        }
 
     assertEquals(1, exitCode)
     assertTrue(errBuffer.toString().contains("--listen-host requires --streamable-http-port"))
@@ -114,28 +128,30 @@ class McpAdapterExecuteTest {
     val started = CompletableDeferred<McpHttpServerHandle>()
 
     val exitCode =
-        adapter.execute(
-            args =
-                listOf(
-                    "--schema",
-                    schemaPath,
-                    "--host",
-                    "127.0.0.1",
-                    "--port",
-                    "9000",
-                    "--streamable-http-port",
-                    "0",
-                    "--listen-host",
-                    "127.0.0.1",
-                ),
-            input = ByteArrayInputStream(byteArrayOf()),
-            output = ByteArrayOutputStream(),
-            transport = NoopTransport(),
-            httpServerLifecycle = { handle ->
-              started.complete(handle)
-              handle.stopSignal.complete(Unit)
-            },
-        )
+        withTimeout(10.seconds) {
+          adapter.execute(
+              args =
+                  listOf(
+                      "--schema",
+                      schemaPath,
+                      "--host",
+                      "127.0.0.1",
+                      "--port",
+                      "9000",
+                      "--streamable-http-port",
+                      "0",
+                      "--listen-host",
+                      "127.0.0.1",
+                  ),
+              input = ByteArrayInputStream(byteArrayOf()),
+              output = ByteArrayOutputStream(),
+              transport = NoopTransport(),
+              httpServerLifecycle = { handle ->
+                started.complete(handle)
+                handle.stopSignal.complete(Unit)
+              },
+          )
+        }
 
     val handle = started.await()
     assertEquals(0, exitCode)
