@@ -42,7 +42,11 @@ class SchemaEditorServer(
   private var httpServer: HttpServer? = null
   private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
-  // スクリプトエンジンマネージャ（エンジンは評価ごとに新規作成してステート汚染を回避）
+  /**
+   * Kotlin スクリプトエンジンのファクトリ。
+   *
+   * エンジンは評価ごとに新規作成し、前回のエラーによるステート汚染を回避する。
+   */
   private val engineManager = ScriptEngineManager()
 
   /** HTTP サーバーを起動する。 */
@@ -155,15 +159,17 @@ class SchemaEditorServer(
    * @throws IllegalStateException 評価結果が [OscSchema] でない場合
    */
   internal fun evaluateDsl(dslText: String): OscSchema {
+    // 1. DSL インポートを自動挿入してスクリプトをラップ
     val wrappedScript = buildString {
       appendLine("import com.oscplatform.core.schema.dsl.*")
       appendLine(dslText)
     }
-    // 評価ごとに新しいエンジンを生成してステート汚染を回避
+    // 2. エラー後のステート汚染を回避するため新しいエンジンを生成
     val engine =
         engineManager.getEngineByExtension("kts")
             ?: error(
                 "Kotlin script engine not found. Ensure kotlin-scripting-jsr223 is on the classpath")
+    // 3. スクリプトを評価し、結果が OscSchema であることを検証
     val result = engine.eval(wrappedScript)
     return result as? OscSchema
         ?: error("Schema script must evaluate to OscSchema. Example: oscSchema { ... }")
