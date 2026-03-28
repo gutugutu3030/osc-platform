@@ -25,6 +25,7 @@ import {
 import { vim } from "@replit/codemirror-vim";
 import { detectContext, getCurrentWord, getSuggestions } from "./autocomplete";
 import type { CompletionCatalog, CompletionItem } from "./types";
+import { setupVimClipboard } from "./vim-clipboard";
 import { applyVimPresets } from "./vim-preset";
 
 /** localStorage に保存する Vim モードの設定キー。 */
@@ -112,6 +113,9 @@ export class CodeMirrorEditor {
       }),
       parent: container,
     });
+
+    // Vim レジスタとシステムクリップボードの双方向同期を設定
+    setupVimClipboard(this.view);
   }
 
   /**

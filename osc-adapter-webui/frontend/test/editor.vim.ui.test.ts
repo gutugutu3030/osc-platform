@@ -123,6 +123,45 @@ describe("editor vim mode", () => {
     expect(editor.getValue()).toBe("\nline\nalpha beta");
     expect((cm as { state: { vim: { insertMode: boolean } } }).state.vim.insertMode).toBe(true);
   });
+  it("yank 時にシステムクリップボードへテキストが書き込まれる", async () => {
+    const writeTextMock = vi.fn().mockResolvedValue(undefined);
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: writeTextMock, readText: vi.fn() },
+      writable: true,
+      configurable: true,
+    });
+
+    const { cm, view } = await setupVimEditor("hello world\nsecond line");
+
+    setCursor(view, 0, 0);
+    pressKeys(cm, "y", "w");
+
+    expect(writeTextMock).toHaveBeenCalledWith("hello ");
+
+    setCursor(view, 0, 0);
+    pressKeys(cm, "Y");
+
+    expect(writeTextMock).toHaveBeenCalledWith("hello world\n");
+  });
+
+  it("フォーカス時にシステムクリップボードから + レジスタへ同期する", async () => {
+    const readTextMock = vi.fn().mockResolvedValue("pasted from clipboard");
+    Object.defineProperty(navigator, "clipboard", {
+      value: { writeText: vi.fn().mockResolvedValue(undefined), readText: readTextMock },
+      writable: true,
+      configurable: true,
+    });
+
+    const { view } = await setupVimEditor("some text");
+
+    // フォーカスイベントを発火してクリップボード同期をトリガー
+    view.dom.dispatchEvent(new FocusEvent("focus"));
+    await flushAsyncWork();
+
+    // "+" レジスタにクリップボードの内容が反映されている
+    const plusRegister = Vim.getRegisterController().getRegister("+");
+    expect(plusRegister.toString()).toBe("pasted from clipboard");
+  });
 });
 
 function clearUnnamedRegister(): void {
@@ -135,7 +174,14 @@ function pressKeys(cm: object, ...keys: string[]): void {
   }
 }
 
-function setCursor(view: { state: { doc: { line: (lineNumber: number) => { from: number } } }; dispatch: (spec: { selection: { anchor: number } }) => void }, lineIndex: number, ch: number): void {
+/**
+ * Vim のカーソル位置を指定された行・列に移動する。
+ *
+ * @param view CodeMirror EditorView 互換オブジェクト
+ * @param lineIndex 0 ベースの行インデックス
+ * @param ch 行内のカラム位置（0 ベース）
+ */
+function setCursor(view: { state: { doc: { line: (lineNumber: number) => { from: number } } }; dispatch: (spec: { selection: { anchor: number } }) => void; dom: HTMLElement }, lineIndex: number, ch: number): void {
   const line = view.state.doc.line(lineIndex + 1);
   view.dispatch({ selection: { anchor: line.from + ch } });
 }
@@ -149,6 +195,7 @@ async function setupVimEditor(initialText: string): Promise<{
   };
   cm: object;
   view: {
+    dom: HTMLElement;
     state: { doc: { line: (lineNumber: number) => { from: number } } };
     dispatch: (spec: { selection: { anchor: number } }) => void;
   };
@@ -177,4 +224,18 @@ async function setupVimEditor(initialText: string): Promise<{
     cm,
     view,
   };
+}
+
+/**
+ * 非同期マイクロタスクキューをフラッシュする。
+ *
+ * `Promise.resolve()` を 2 回 await することで、
+ * テスト対象コード内でチェーンされた非同期処理（クリップボード読み書きなど）を
+ * 確実に完了させる。
+ *
+ * @return 非同期処理のフラッシュ完了を示す Promise
+ */
+async function flushAsyncWork(): Promise<void> {
+  await Promise.resolve();
+  await Promise.resolve();
 }
