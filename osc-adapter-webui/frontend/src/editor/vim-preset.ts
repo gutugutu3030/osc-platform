@@ -23,7 +23,7 @@ export interface VimKeyMapping {
  */
 export const DEFAULT_VIM_PRESETS: VimKeyMapping[] = [
   // jk で Insert モードから Normal モードへ戻る
-  { lhs: "jk", rhs: "<Esc>", mode: "insert" },
+  { lhs: "kj", rhs: "<Esc>", mode: "insert" },
 ];
 
 /**
