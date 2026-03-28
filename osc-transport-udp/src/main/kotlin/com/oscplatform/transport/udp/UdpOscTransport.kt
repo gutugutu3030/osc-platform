@@ -12,12 +12,15 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancelAndJoin
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.asSharedFlow
 import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 
 /** 連続受信失敗がこの回数を超えた場合に受信ループを停止するサーキットブレーカ閾値。 */
@@ -60,29 +63,49 @@ class UdpOscTransport(
 
   @Volatile private var receiveSocket: DatagramSocket? = null
   private var receiveJob: Job? = null
+  private val lifecycleMutex = Mutex()
 
   /**
    * トランスポートを開始し、UDPソケットをバインドして受信ループを起動する。
    *
-   * 既に開始済みの場合は何もしない。
+   * stop完了後であれば同一インスタンスに対して再度開始できる。既に開始済みの場合は何もしない。
    */
   override suspend fun start() {
-    if (receiveSocket != null) {
-      return
-    }
+    lifecycleMutex.withLock {
+      if (receiveSocket != null) {
+        return
+      }
 
-    val hostAddress = InetAddress.getByName(bindHost)
-    val socket = DatagramSocket(bindPort, hostAddress)
-    receiveSocket = socket
-    receiveJob = scope.launch { receiveLoop(socket) }
+      val hostAddress = InetAddress.getByName(bindHost)
+      val socket = DatagramSocket(bindPort, hostAddress)
+      try {
+        receiveSocket = socket
+        receiveJob = scope.launch { receiveLoop(socket) }
+      } catch (ex: Throwable) {
+        socket.close()
+        throw ex
+      }
+    }
   }
 
-  /** トランスポートを停止し、UDPソケットを閉じて受信ループをキャンセルする。 */
+  /**
+   * トランスポートを停止し、UDPソケットを閉じて受信ループの終了まで待機する。
+   *
+   * このメソッドが戻った時点で受信リソースは解放済みであり、同一インスタンスに対して再度 [start] を呼び出せる。
+   */
   override suspend fun stop() {
-    receiveSocket?.close()
-    receiveSocket = null
-    receiveJob?.cancel()
-    receiveJob = null
+    lifecycleMutex.withLock {
+      val socket = receiveSocket
+      val job = receiveJob
+
+      receiveSocket = null
+      receiveJob = null
+
+      // 1. 以降の start が古いソケット状態を参照しないように公開状態を先に切り離す。
+      // 2. close() で receive() のブロックを解除し、cancelAndJoin() で受信ループ終了まで待機する。
+      socket?.close()
+      job?.cancelAndJoin()
+    }
   }
 
   /**
