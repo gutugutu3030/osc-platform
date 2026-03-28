@@ -24,6 +24,7 @@ class SchemaEditorServerAssetRouteTest {
     assertEquals(HttpStatusCode.OK, response.status)
     assertTrue(body.contains("/assets/editor/editor.css"))
     assertTrue(body.contains("/assets/editor/editor.js"))
+    assertTrue(body.contains("type=\"module\""))
     assertTrue(body.contains("括弧ペア補完"))
     assertFalse(body.contains("var debounceTimer = null;"))
   }
@@ -39,7 +40,8 @@ class SchemaEditorServerAssetRouteTest {
 
     assertEquals(HttpStatusCode.OK, response.status)
     assertTrue(response.headers["Content-Type"].orEmpty().contains("javascript"))
-    assertTrue(body.contains("function formatCode()"))
+    assertTrue(body.contains("/api/evaluate"))
+    assertTrue(body.contains("load-template-empty-btn"))
   }
 
   /** 存在しないアセットは 404 になることを確認する。 */

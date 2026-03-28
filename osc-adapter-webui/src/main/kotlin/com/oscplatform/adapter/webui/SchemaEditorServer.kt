@@ -147,12 +147,12 @@ class SchemaEditorServer(
               div {
                 attributes["style"] = "display:flex;gap:8px;"
                 button(classes = "template-btn") {
-                  attributes["onclick"] = "formatCode()"
+                  id = "format-btn"
                   attributes["title"] = "Ctrl+Shift+F"
                   +"フォーマット"
                 }
                 button(classes = "template-btn") {
-                  attributes["onclick"] = "loadTemplate()"
+                  id = "load-template-btn"
                   +"サンプルを挿入"
                 }
               }
@@ -181,7 +181,7 @@ class SchemaEditorServer(
                   +"入力するとリアルタイムでスキーマが可視化されます"
                 }
                 button(classes = "template-btn") {
-                  attributes["onclick"] = "loadTemplate()"
+                  id = "load-template-empty-btn"
                   attributes["style"] = "margin-top:16px;"
                   +"サンプルを挿入して始める"
                 }
@@ -193,7 +193,7 @@ class SchemaEditorServer(
           raw("<!-- 括弧ペア補完 -->")
           raw("<!-- 閉じ括弧のスキップ -->")
         }
-        script(src = "/assets/editor/editor.js") {}
+        script(src = "/assets/editor/editor.js") { attributes["type"] = "module" }
       }
     }
   }

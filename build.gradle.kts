@@ -108,10 +108,12 @@ tasks.register("syncVersionReferences") {
 spotless {
   kotlin {
     target("**/*.kt")
+    targetExclude("**/node_modules/**/*.kt")
     ktfmt("0.54")
   }
   kotlinGradle {
     target("**/*.gradle.kts")
+    targetExclude("**/node_modules/**/*.gradle.kts")
     ktfmt("0.54")
   }
 }
