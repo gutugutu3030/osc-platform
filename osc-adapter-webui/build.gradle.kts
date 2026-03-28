@@ -18,6 +18,17 @@ val npmInstallFrontend by
       outputs.dir(frontendDir.dir("node_modules"))
     }
 
+val typecheckFrontend by
+    tasks.registering(Exec::class) {
+      dependsOn(npmInstallFrontend)
+      workingDir(frontendDir.asFile)
+      commandLine(npmExecutable, "run", "typecheck")
+      inputs.file(frontendDir.file("package.json"))
+      inputs.file(frontendDir.file("package-lock.json"))
+      inputs.file(frontendDir.file("tsconfig.json"))
+      inputs.dir(frontendDir.dir("src"))
+    }
+
 val buildFrontend by
     tasks.registering(Exec::class) {
       dependsOn(npmInstallFrontend)
@@ -29,17 +40,6 @@ val buildFrontend by
       inputs.file(frontendDir.file("tsconfig.json"))
       inputs.dir(frontendDir.dir("src"))
       outputs.dir(generatedFrontendDir)
-    }
-
-val typecheckFrontend by
-    tasks.registering(Exec::class) {
-      dependsOn(npmInstallFrontend)
-      workingDir(frontendDir.asFile)
-      commandLine(npmExecutable, "run", "typecheck")
-      inputs.file(frontendDir.file("package.json"))
-      inputs.file(frontendDir.file("package-lock.json"))
-      inputs.file(frontendDir.file("tsconfig.json"))
-      inputs.dir(frontendDir.dir("src"))
     }
 
 val testFrontendUi by
