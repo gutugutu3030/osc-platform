@@ -62,7 +62,6 @@ import kotlinx.io.asSource
 import kotlinx.io.buffered
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.JsonObject
-import tools.jackson.databind.JsonNode
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.databind.node.ObjectNode
@@ -776,7 +775,7 @@ class McpAdapter(
     }
     val tree = schemaMapper.readTree(arguments.toString())
     @Suppress("UNCHECKED_CAST")
-    return (McpSchemaJsonSupport.jsonNodeToValue(tree) as? Map<String, Any?>) ?: emptyMap()
+    return (tree.toKotlinValue() as? Map<String, Any?>) ?: emptyMap()
   }
 
   /**
@@ -1031,14 +1030,6 @@ internal object McpSchemaJsonSupport {
           }
     }
   }
-
-  /**
-   * [JsonNode] を Kotlin の値に変換する。
-   *
-   * @param node 変換対象の JSON ノード
-   * @return 変換された Kotlin の値（null の場合あり）
-   */
-  fun jsonNodeToValue(node: JsonNode): Any? = node.toKotlinValue()
 }
 
 /**

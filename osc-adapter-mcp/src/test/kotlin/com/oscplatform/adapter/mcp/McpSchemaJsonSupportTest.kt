@@ -7,6 +7,7 @@ import com.oscplatform.core.schema.dsl.FLOAT
 import com.oscplatform.core.schema.dsl.INT
 import com.oscplatform.core.schema.dsl.LENGTH
 import com.oscplatform.core.schema.dsl.oscSchema
+import com.oscplatform.core.util.toKotlinValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -88,7 +89,7 @@ class McpSchemaJsonSupportTest {
         """
                 .trimIndent())
 
-    val value = McpSchemaJsonSupport.jsonNodeToValue(node)
+    val value = node.toKotlinValue()
 
     val map = assertIs<Map<*, *>>(value)
     assertEquals("mesh", map["name"])
