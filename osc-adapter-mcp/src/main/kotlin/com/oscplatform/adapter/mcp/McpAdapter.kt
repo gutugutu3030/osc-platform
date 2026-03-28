@@ -19,6 +19,7 @@ import com.oscplatform.core.schema.loader.SchemaLoader
 import com.oscplatform.core.schema.loader.SchemaPathResolver
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.core.transport.OscTransport
+import com.oscplatform.core.util.JsonNodeConverter
 import com.oscplatform.transport.udp.UdpOscTransport
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -1037,22 +1038,7 @@ internal object McpSchemaJsonSupport {
    * @param node 変換対象の JSON ノード
    * @return 変換された Kotlin の値（null の場合あり）
    */
-  fun jsonNodeToValue(node: JsonNode): Any? {
-    return when {
-      node.isString -> node.stringValue()!!
-      node.isInt -> node.intValue()
-      node.isLong -> node.longValue()
-      node.isFloat || node.isDouble || node.isBigDecimal -> node.doubleValue()
-      node.isBoolean -> node.booleanValue()
-      node.isArray -> node.toList().map { child -> jsonNodeToValue(child) }
-      node.isObject ->
-          linkedMapOf<String, Any?>().also { map ->
-            node.properties().forEach { (key, value) -> map[key] = jsonNodeToValue(value) }
-          }
-      node.isNull -> null
-      else -> node.toString()
-    }
-  }
+  fun jsonNodeToValue(node: JsonNode): Any? = JsonNodeConverter.jsonNodeToValue(node)
 }
 
 /**

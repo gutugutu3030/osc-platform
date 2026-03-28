@@ -1,5 +1,6 @@
 package com.oscplatform.adapter.cli
 
+import com.oscplatform.core.util.JsonNodeConverter
 import tools.jackson.databind.JsonNode
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
@@ -41,20 +42,5 @@ internal object CliDynamicValueParser {
    * @param node 変換対象のJsonNode
    * @return Kotlinのネイティブ型に変換された値。nullノードの場合はnull
    */
-  fun jsonNodeToValue(node: JsonNode): Any? {
-    return when {
-      node.isString -> node.stringValue()!!
-      node.isInt -> node.intValue()
-      node.isLong -> node.longValue()
-      node.isFloat || node.isDouble || node.isBigDecimal -> node.doubleValue()
-      node.isBoolean -> node.booleanValue()
-      node.isArray -> node.toList().map { child -> jsonNodeToValue(child) }
-      node.isObject ->
-          linkedMapOf<String, Any?>().also { map ->
-            node.properties().forEach { (key, value) -> map[key] = jsonNodeToValue(value) }
-          }
-      node.isNull -> null
-      else -> node.toString()
-    }
-  }
+  fun jsonNodeToValue(node: JsonNode): Any? = JsonNodeConverter.jsonNodeToValue(node)
 }
