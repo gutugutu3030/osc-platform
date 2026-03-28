@@ -33,7 +33,7 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
 
       - name: Run release validation tests
-        run: ./gradlew :osc-adapter-cli:test :osc-adapter-mcp:test :osc-cli:test :osc-transport-udp:test --no-daemon
+        run: ./gradlew :osc-adapter-cli:test :osc-adapter-mcp:test :osc-cli:test :osc-transport-udp:test :osc-adapter-webui:check --no-daemon
 
       - name: Verify synced version references
         run: |
