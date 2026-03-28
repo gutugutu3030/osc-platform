@@ -80,6 +80,7 @@ class WebUiServerKtorModuleTest {
     assertEquals(HttpStatusCode.OK, response.status)
     assertTrue(body.contains("/assets/webui/webui.css"))
     assertTrue(body.contains("/assets/webui/webui.js"))
+    assertTrue(body.contains("type=\"module\""))
     assertTrue(body.contains("webui-schema-data"))
     assertTrue(body.contains("192.168.0.10"))
     assertFalse(body.contains("function renderMessageList"))
@@ -96,7 +97,8 @@ class WebUiServerKtorModuleTest {
 
     assertEquals(HttpStatusCode.OK, response.status)
     assertTrue(response.headers["Content-Type"].orEmpty().contains("javascript"))
-    assertTrue(body.contains("function sendMessage()"))
+    assertTrue(body.contains("/api/send"))
+    assertTrue(body.contains("EventLogController"))
   }
 
   /** 不正な JSON を `/api/send` に送ると 400 になることを確認する。 */

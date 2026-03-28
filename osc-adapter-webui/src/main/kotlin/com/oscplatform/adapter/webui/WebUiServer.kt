@@ -253,7 +253,6 @@ class WebUiServer(
               }
               button {
                 id = "send-btn"
-                attributes["onclick"] = "sendMessage()"
                 +"Send"
               }
               div { id = "send-result" }
@@ -267,7 +266,6 @@ class WebUiServer(
             span { +"Event Log" }
             button {
               id = "clear-btn"
-              attributes["onclick"] = "clearLog()"
               +"Clear"
             }
           }
@@ -283,7 +281,7 @@ class WebUiServer(
           type = "application/json"
           unsafe { raw(uiConfigJson) }
         }
-        script(src = "/assets/webui/webui.js") {}
+        script(src = "/assets/webui/webui.js") { attributes["type"] = "module" }
       }
     }
   }

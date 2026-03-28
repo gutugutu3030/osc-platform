@@ -106,7 +106,7 @@ class SchemaEditorServerTest {
       conn.requestMethod = "GET"
       assertEquals(200, conn.responseCode)
       val body = conn.inputStream.bufferedReader().readText()
-      assertTrue(body.contains("formatCode()"), "フォーマットボタンの onclick が含まれていること")
+      assertTrue(body.contains("id=\"format-btn\""), "フォーマットボタンの id が含まれていること")
       assertTrue(body.contains("フォーマット"), "フォーマットボタンのラベルが含まれていること")
     }
   }
