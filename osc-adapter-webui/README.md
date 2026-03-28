@@ -7,6 +7,15 @@
 
 フロントエンド UI の回帰確認は [frontend/test](frontend/test) 配下の Vitest + jsdom で行い、`./gradlew :osc-adapter-webui:check --no-daemon` から自動実行されます。
 
+### ビルド前提条件（Node.js / npm）
+
+このモジュール（および依存している `osc-cli` など）は、`processResources` 実行時にフロントエンドのビルドを行うため、Node.js と npm がインストールされていることを前提としています。
+
+- 必須: Node.js と npm（推奨: Node.js 18 以降、npm 9 以降。CI ではこれらのバージョンで検証しています）
+- `./gradlew :osc-adapter-webui:build --no-daemon` や `./gradlew build --no-daemon` の実行時に、`frontend` ディレクトリで `npm ci` が自動実行されます
+- Node.js / npm がインストールされていない環境では、`esbuild` の実行に失敗し、Gradle ビルドがエラー終了します
+
+Node.js / npm 周りでビルドが失敗した場合は、まず Node.js / npm がインストールされていることと、`frontend` ディレクトリで手動実行した `npm ci` / `npm test` が成功することを確認してください。
 ## 役割
 
 - `osc run --webui`
