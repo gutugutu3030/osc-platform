@@ -1,9 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installCodeMirrorGeometryMocks } from "./codemirror-geometry";
 
 describe("editor main", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.useFakeTimers();
+    installCodeMirrorGeometryMocks();
     document.body.innerHTML = `
       <div class="editor-header">
         <span>Kotlin DSL Editor</span>

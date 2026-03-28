@@ -236,10 +236,24 @@ osc editor --port 8080    # ポートを指定して起動
 
 エディタヘッダーの **Vim** チェックボックスをオンにすると、Vim 風のモーダル入力が有効になります。
 
-- Normal / Insert / Visual モードを切り替えながら編集できます
+- Normal / Insert / Visual / Visual Block モードを切り替えながら編集できます
 - エディタ下部にモード表示のステータスバーが表示されます
 - 設定は `localStorage` に保存されるため、ブラウザを再読み込みしても維持されます
 - `@replit/codemirror-vim` を使用しており、主要な Vim キーバインドをサポートしています
+- Vim モード有効時の `Ctrl+V` はブラウザ貼り付けではなく、nvim と同様に Visual Block 開始として扱います
+
+#### 主要ショートカット
+
+以下の基本操作は nvim に合わせた挙動で利用できます。
+
+| モード | 入力 | 動作 |
+|---|---|---|
+| Normal | `Y` / `yy` | 現在行を yank |
+| Normal | `D` / `d$` | カーソル位置から行末まで削除 |
+| Normal | `C` / `c$` | カーソル位置から行末まで変更して Insert モードへ移行 |
+| Normal | `yw` / `dw` | word motion と組み合わせて yank / delete |
+| Normal | `Ctrl+V` | Visual Block モードへ移行 |
+| Visual Block | `y` / `d` / `c` | 矩形選択に対して yank / delete / change |
 
 #### プリセットキーマッピング
 
