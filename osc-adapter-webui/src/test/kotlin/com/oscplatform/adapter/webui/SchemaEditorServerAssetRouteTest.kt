@@ -41,7 +41,7 @@ class SchemaEditorServerAssetRouteTest {
     assertEquals(HttpStatusCode.OK, response.status)
     assertTrue(response.headers["Content-Type"].orEmpty().contains("javascript"))
     assertTrue(body.contains("/api/evaluate"))
-    assertTrue(body.contains("SchemaPreviewController"))
+    assertTrue(body.contains("load-template-empty-btn"))
   }
 
   /** 存在しないアセットは 404 になることを確認する。 */

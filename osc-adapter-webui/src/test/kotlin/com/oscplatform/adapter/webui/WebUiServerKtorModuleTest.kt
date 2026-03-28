@@ -98,7 +98,7 @@ class WebUiServerKtorModuleTest {
     assertEquals(HttpStatusCode.OK, response.status)
     assertTrue(response.headers["Content-Type"].orEmpty().contains("javascript"))
     assertTrue(body.contains("/api/send"))
-    assertTrue(body.contains("EventLogController"))
+    assertTrue(body.contains("/api/events"))
   }
 
   /** 不正な JSON を `/api/send` に送ると 400 になることを確認する。 */
