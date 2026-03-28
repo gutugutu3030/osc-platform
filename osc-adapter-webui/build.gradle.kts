@@ -21,6 +21,7 @@ val npmInstallFrontend by
 val buildFrontend by
     tasks.registering(Exec::class) {
       dependsOn(npmInstallFrontend)
+      dependsOn(typecheckFrontend)
       workingDir(frontendDir.asFile)
       commandLine(npmExecutable, "run", "build")
       inputs.file(frontendDir.file("package.json"))
