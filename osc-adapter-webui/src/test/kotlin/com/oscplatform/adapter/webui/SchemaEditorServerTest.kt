@@ -97,6 +97,34 @@ class SchemaEditorServerTest {
     }
   }
 
+  /** GET / で返る HTML にフォーマットボタンが含まれることを確認する。 */
+  @Test
+  fun getIndexContainsFormatButton() {
+    withServer { server ->
+      val conn =
+          URI("http://localhost:${server.port}/").toURL().openConnection() as HttpURLConnection
+      conn.requestMethod = "GET"
+      assertEquals(200, conn.responseCode)
+      val body = conn.inputStream.bufferedReader().readText()
+      assertTrue(body.contains("formatCode()"), "フォーマットボタンの onclick が含まれていること")
+      assertTrue(body.contains("フォーマット"), "フォーマットボタンのラベルが含まれていること")
+    }
+  }
+
+  /** GET / で返る HTML に括弧ペア補完のロジックが含まれることを確認する。 */
+  @Test
+  fun getIndexContainsBracketPairCompletion() {
+    withServer { server ->
+      val conn =
+          URI("http://localhost:${server.port}/").toURL().openConnection() as HttpURLConnection
+      conn.requestMethod = "GET"
+      assertEquals(200, conn.responseCode)
+      val body = conn.inputStream.bufferedReader().readText()
+      assertTrue(body.contains("括弧ペア補完"), "括弧ペア補完のコメントが含まれていること")
+      assertTrue(body.contains("閉じ括弧のスキップ"), "閉じ括弧スキップのコメントが含まれていること")
+    }
+  }
+
   /** POST /api/evaluate で有効な DSL がスキーマを含む成功レスポンスを返すことを確認する。 */
   @Test
   fun evaluateValidDslReturnsSchema() {
