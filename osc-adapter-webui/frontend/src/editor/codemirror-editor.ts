@@ -1,7 +1,15 @@
-import { autocompletion, CompletionContext, type CompletionResult } from "@codemirror/autocomplete";
+import {
+  acceptCompletion,
+  autocompletion,
+  closeCompletion,
+  CompletionContext,
+  type CompletionResult,
+  moveCompletionSelection,
+  startCompletion,
+} from "@codemirror/autocomplete";
 import { defaultKeymap, history, historyKeymap, indentWithTab } from "@codemirror/commands";
 import { bracketMatching, indentOnInput } from "@codemirror/language";
-import { Compartment, EditorState, type Extension } from "@codemirror/state";
+import { Compartment, EditorState, type Extension, Prec } from "@codemirror/state";
 import {
   crosshairCursor,
   drawSelection,
@@ -71,11 +79,24 @@ export class CodeMirrorEditor {
       highlightActiveLine(),
       keymap.of([...defaultKeymap, ...historyKeymap, indentWithTab]),
       autocompletion({
+        defaultKeymap: false,
         override: [
           (context: CompletionContext): CompletionResult | null =>
             this.completionSource(context, completions),
         ],
       }),
+      // 補完候補の確定は Tab で行う（Enter ではなく）
+      Prec.highest(
+        keymap.of([
+          { key: "Tab", run: acceptCompletion },
+          { key: "Escape", run: closeCompletion },
+          { key: "ArrowDown", run: moveCompletionSelection(true) },
+          { key: "ArrowUp", run: moveCompletionSelection(false) },
+          { key: "PageDown", run: moveCompletionSelection(true, "page") },
+          { key: "PageUp", run: moveCompletionSelection(false, "page") },
+          { key: "Ctrl-Space", run: startCompletion },
+        ]),
+      ),
       EditorView.updateListener.of((update: ViewUpdate) => {
         if (update.docChanged) {
           onChange(update.state.doc.toString());
