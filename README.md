@@ -407,12 +407,12 @@ pluginManagement {
 ```kotlin
 plugins {
     kotlin("jvm") version "2.1.20"
-    id("com.oscplatform.schema-codegen") version "0.8.0"
+    id("com.oscplatform.schema-codegen") version "0.9.0"
 }
 
 dependencies {
-    implementation("com.oscplatform:osc-core:0.8.0")
-    implementation("com.oscplatform:osc-transport-udp:0.8.0")
+    implementation("com.oscplatform:osc-core:0.9.0")
+    implementation("com.oscplatform:osc-transport-udp:0.9.0")
 }
 
 oscSchemaCodegen {
