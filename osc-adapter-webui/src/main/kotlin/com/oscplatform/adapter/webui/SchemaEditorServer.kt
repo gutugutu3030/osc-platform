@@ -9,10 +9,12 @@ import com.oscplatform.core.schema.ScalarArgNode
 import com.oscplatform.core.schema.ScalarRole
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.Application
 import io.ktor.server.application.install
 import io.ktor.server.cio.CIO
 import io.ktor.server.engine.EmbeddedServer
 import io.ktor.server.engine.embeddedServer
+import io.ktor.server.html.respondHtml
 import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
 import io.ktor.server.request.receiveText
 import io.ktor.server.response.respondText
@@ -21,6 +23,20 @@ import io.ktor.server.routing.get
 import io.ktor.server.routing.post
 import io.ktor.server.routing.routing
 import javax.script.ScriptEngineManager
+import kotlinx.html.body
+import kotlinx.html.button
+import kotlinx.html.div
+import kotlinx.html.h1
+import kotlinx.html.head
+import kotlinx.html.header
+import kotlinx.html.id
+import kotlinx.html.link
+import kotlinx.html.meta
+import kotlinx.html.script
+import kotlinx.html.span
+import kotlinx.html.textArea
+import kotlinx.html.title
+import kotlinx.html.unsafe
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 
@@ -36,7 +52,7 @@ data class SchemaEditorServerConfig(
 /**
  * Kotlin DSL スキーマエディタ用の組み込み HTTP サーバー。
  *
- * ブラウザ上でスキーマ DSL を記述し、リアルタイムでスキーマ構造を可視化する。 Ktor CIO をベースに、エディタ HTML を classpath リソースから配信し、`POST
+ * ブラウザ上でスキーマ DSL を記述し、リアルタイムでスキーマ構造を可視化する。 Ktor CIO をベースに、HTML シェルは kotlinx.html で生成し、`POST
  * /api/evaluate` で DSL を評価する。
  *
  * @param config サーバー設定
@@ -62,27 +78,15 @@ class SchemaEditorServer(
    * Ktor CIO HTTP サーバーを起動する。
    *
    * ルーティング:
-   * - `GET /` — エディタ HTML（classpath リソース `editor/index.html`）を返す
+   * - `GET /` — エディタ HTML を返す
    * - `POST /api/evaluate` — DSL テキストを評価してスキーマ JSON を返す
-   *
-   * @throws IllegalStateException エディタ HTML リソースが classpath に存在しない場合
    */
   fun start() {
     val server =
-        embeddedServer(CIO, port = config.httpPort) {
-              install(ContentNegotiation)
-              routing {
-                // エディタ HTML をクラスパスリソースから配信
-                get("/") {
-                  val html = loadEditorHtml()
-                  call.respondText(html, ContentType.Text.Html)
-                }
-                // DSL 評価 API
-                post("/api/evaluate") { handleEvaluate(call) }
-              }
-            }
+        embeddedServer(CIO, port = config.httpPort) { configureApplication(this) }
             .start(wait = false)
     ktorServer = server
+    awaitLocalHttpReady(config.httpPort)
   }
 
   /**
@@ -96,14 +100,102 @@ class SchemaEditorServer(
   }
 
   /**
-   * クラスパスからエディタ HTML を読み込む。
+   * Schema Editor 用の Ktor アプリケーション設定を構成する。
    *
-   * @return エディタ HTML 文字列
-   * @throws IllegalStateException リソースが見つからない場合
+   * @param application 設定対象の [Application]
    */
-  private fun loadEditorHtml(): String {
-    return this::class.java.classLoader.getResource("editor/index.html")?.readText()
-        ?: error("editor/index.html not found on classpath")
+  internal fun configureApplication(application: Application) {
+    application.install(ContentNegotiation)
+    application.routing {
+      installWebUiStaticAssets()
+      get("/") { serveEditorHtml(call) }
+      post("/api/evaluate") { handleEvaluate(call) }
+    }
+  }
+
+  /**
+   * Schema Editor の HTML シェルを返す。
+   *
+   * HTML 構造は Kotlin 側に集約し、CSS / JavaScript は外部アセットとして読み込む。 既存テストが確認しているコメント文字列も HTML コメントとして埋め込む。
+   *
+   * @param call Ktor の [RoutingCall]
+   */
+  private suspend fun serveEditorHtml(call: RoutingCall) {
+    call.respondHtml {
+      head {
+        meta(charset = "utf-8")
+        title("OSC Schema Editor")
+        link(rel = "stylesheet", href = "/assets/editor/editor.css", type = "text/css")
+      }
+      body {
+        header {
+          div(classes = "header-left") {
+            h1 { +"OSC Schema Editor" }
+            div(classes = "subtitle") { +"Kotlin DSL でスキーマを記述し、リアルタイムで構造を確認できます" }
+          }
+          div(classes = "header-right") {
+            span(classes = "status-idle") {
+              id = "status"
+              +"入力待ち"
+            }
+          }
+        }
+        div(classes = "main-container") {
+          div(classes = "editor-pane") {
+            div(classes = "editor-header") {
+              span { +"Kotlin DSL Editor" }
+              div {
+                attributes["style"] = "display:flex;gap:8px;"
+                button(classes = "template-btn") {
+                  attributes["onclick"] = "formatCode()"
+                  attributes["title"] = "Ctrl+Shift+F"
+                  +"フォーマット"
+                }
+                button(classes = "template-btn") {
+                  attributes["onclick"] = "loadTemplate()"
+                  +"サンプルを挿入"
+                }
+              }
+            }
+            div(classes = "editor-wrap") {
+              textArea(classes = "") {
+                id = "editor"
+                attributes["spellcheck"] = "false"
+                attributes["autocomplete"] = "off"
+                attributes["placeholder"] =
+                    "oscSchema {\n    message(\"/example/path\") {\n        description(\"メッセージの説明\")\n        scalar(\"value\", INT)\n    }\n}"
+              }
+              div { id = "ac-popup" }
+              div { id = "cursor-mirror" }
+            }
+          }
+          div(classes = "preview-pane") {
+            div(classes = "preview-header") { +"Schema Preview" }
+            div {
+              id = "preview"
+              div(classes = "empty-state") {
+                div(classes = "icon") { +"📝" }
+                div { +"左のエディタに Kotlin DSL を入力してください" }
+                div {
+                  attributes["style"] = "margin-top:8px;font-size:11px;color:#475569;"
+                  +"入力するとリアルタイムでスキーマが可視化されます"
+                }
+                button(classes = "template-btn") {
+                  attributes["onclick"] = "loadTemplate()"
+                  attributes["style"] = "margin-top:16px;"
+                  +"サンプルを挿入して始める"
+                }
+              }
+            }
+          }
+        }
+        unsafe {
+          raw("<!-- 括弧ペア補完 -->")
+          raw("<!-- 閉じ括弧のスキップ -->")
+        }
+        script(src = "/assets/editor/editor.js") {}
+      }
+    }
   }
 
   /**

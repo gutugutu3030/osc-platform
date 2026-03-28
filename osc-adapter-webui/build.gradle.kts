@@ -9,10 +9,12 @@ dependencies {
   implementation(platform("io.ktor:ktor-bom:$ktorVersion"))
   implementation("io.ktor:ktor-server-cio")
   implementation("io.ktor:ktor-server-content-negotiation")
+  implementation("io.ktor:ktor-server-html-builder")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
   implementation("tools.jackson.core:jackson-databind:$jacksonVersion")
   implementation("tools.jackson.module:jackson-module-kotlin:$jacksonVersion")
   implementation("org.jetbrains.kotlin:kotlin-scripting-jsr223:$kotlinVersion")
   testImplementation("io.ktor:ktor-client-cio")
+  testImplementation("io.ktor:ktor-server-test-host")
   testImplementation(kotlin("test"))
 }

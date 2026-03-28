@@ -8,9 +8,7 @@ import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 
-/**
- * [toKotlinValue] が JsonNode を Kotlin のネイティブ型へ再帰変換することを検証するテスト。
- */
+/** [toKotlinValue] が JsonNode を Kotlin のネイティブ型へ再帰変換することを検証するテスト。 */
 class JsonNodeConverterTest {
   private val mapper: ObjectMapper =
       JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()

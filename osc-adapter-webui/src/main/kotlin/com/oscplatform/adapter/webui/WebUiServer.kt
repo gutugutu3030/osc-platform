@@ -11,23 +11,55 @@ import com.oscplatform.core.schema.OscType
 import com.oscplatform.core.schema.ScalarArgNode
 import com.oscplatform.core.schema.ScalarRole
 import com.oscplatform.core.transport.OscTarget
-import com.sun.net.httpserver.HttpExchange
-import com.sun.net.httpserver.HttpServer
-import java.io.PrintWriter
-import java.net.InetSocketAddress
-import java.nio.charset.StandardCharsets
+import io.ktor.http.ContentType
+import io.ktor.http.HttpHeaders
+import io.ktor.http.HttpStatusCode
+import io.ktor.server.application.Application
+import io.ktor.server.application.install
+import io.ktor.server.cio.CIO
+import io.ktor.server.engine.EmbeddedServer
+import io.ktor.server.engine.embeddedServer
+import io.ktor.server.html.respondHtml
+import io.ktor.server.plugins.contentnegotiation.ContentNegotiation
+import io.ktor.server.request.receiveText
+import io.ktor.server.response.header
+import io.ktor.server.response.respondText
+import io.ktor.server.response.respondTextWriter
+import io.ktor.server.routing.RoutingCall
+import io.ktor.server.routing.get
+import io.ktor.server.routing.post
+import io.ktor.server.routing.routing
 import java.util.concurrent.CopyOnWriteArrayList
-import java.util.concurrent.Executors
-import java.util.concurrent.LinkedBlockingQueue
-import java.util.concurrent.TimeUnit
+import kotlin.coroutines.coroutineContext
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.DelicateCoroutinesApi
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.emptyFlow
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlinx.html.InputType
+import kotlinx.html.body
+import kotlinx.html.button
+import kotlinx.html.div
+import kotlinx.html.h1
+import kotlinx.html.h2
+import kotlinx.html.head
+import kotlinx.html.header
+import kotlinx.html.id
+import kotlinx.html.input
+import kotlinx.html.lang
+import kotlinx.html.link
+import kotlinx.html.meta
+import kotlinx.html.p
+import kotlinx.html.script
+import kotlinx.html.span
+import kotlinx.html.title
+import kotlinx.html.unsafe
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 
@@ -101,18 +133,17 @@ class WebUiServer(
   val port: Int
     get() = config.httpPort
 
-  private var httpServer: HttpServer? = null
+  private var ktorServer: EmbeddedServer<*, *>? = null
   private val sseClients = CopyOnWriteArrayList<SseClient>()
   private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
   /** HTTP サーバーを起動し、ランタイムイベントおよび追加イベントの配信を開始する。 */
   fun start() {
-    val server = HttpServer.create(InetSocketAddress(config.httpPort), 0)
-    server.createContext("/") { exchange -> dispatch(exchange) }
-    server.executor = Executors.newVirtualThreadPerTaskExecutor()
-    server.start()
-    httpServer = server
+    val server = embeddedServer(CIO, port = config.httpPort) { configureApplication(this) }
+    ktorServer = server.start(wait = false)
+    awaitLocalHttpReady(config.httpPort)
 
+    // HTTP サーバー起動後にイベント購読を開始し、SSE クライアントへ逐次配信する。
     scope.launch { runtime.events.collect { event -> broadcastJson(serializeRuntimeEvent(event)) } }
     scope.launch {
       additionalEvents.collect { event ->
@@ -131,62 +162,178 @@ class WebUiServer(
 
   /** HTTP サーバーを停止し、コルーチンスコープをキャンセルする。 */
   fun stop() {
-    httpServer?.stop(0)
-    httpServer = null
+    sseClients.forEach { it.close() }
+    sseClients.clear()
+    ktorServer?.stop(gracePeriodMillis = 1000, timeoutMillis = 2000)
+    ktorServer = null
     scope.cancel()
   }
 
   /**
-   * HTTP リクエストをパスとメソッドに基づいて適切なハンドラに振り分ける。
+   * Web UI 用の Ktor アプリケーション設定を構成する。
    *
-   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   * @param application 設定対象の [Application]
    */
-  private fun dispatch(exchange: HttpExchange) {
-    try {
-      val path = exchange.requestURI.path
-      val method = exchange.requestMethod
-      when {
-        method == "GET" && path == "/" -> serveHtml(exchange)
-        method == "GET" && path == "/api/schema" -> serveSchema(exchange)
-        method == "POST" && path == "/api/send" -> handleSend(exchange)
-        method == "GET" && path == "/api/events" -> handleEvents(exchange)
-        else -> sendResponse(exchange, 404, "text/plain", "Not Found")
-      }
-    } catch (e: Exception) {
-      try {
-        sendResponse(exchange, 500, "application/json", toJson(mapOf("error" to e.message)))
-      } catch (_: Exception) {}
+  internal fun configureApplication(application: Application) {
+    application.install(ContentNegotiation)
+    application.routing {
+      installWebUiStaticAssets()
+      get("/") { serveHtml(call) }
+      get("/api/schema") { serveSchema(call) }
+      post("/api/send") { handleSend(call) }
+      get("/api/events") { handleEvents(call) }
     }
   }
 
   /**
    * メインの HTML ページを返す。
    *
-   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   * @param call Ktor の [RoutingCall]
    */
-  private fun serveHtml(exchange: HttpExchange) {
-    sendResponse(exchange, 200, "text/html; charset=utf-8", buildHtml())
+  private suspend fun serveHtml(call: RoutingCall) {
+    val title = pageTitle()
+    val subtitle = pageSubtitle()
+    val schemaJson = toJsonForHtmlScript(buildSchemaPayload())
+    val uiConfigJson = toJsonForHtmlScript(buildUiConfigPayload())
+
+    call.respondHtml {
+      lang = "en"
+      head {
+        meta(charset = "utf-8")
+        title(title)
+        link(rel = "stylesheet", href = "/assets/webui/webui.css", type = "text/css")
+      }
+      body {
+        header {
+          h1 { +title }
+          p { +subtitle }
+          p {
+            id = "schema-label"
+            +"Loading schema..."
+          }
+        }
+        div(classes = "main-container") {
+          div {
+            id = "schema-list"
+            h2 { +"Messages" }
+            div {
+              id = "message-items"
+              +"Loading..."
+            }
+          }
+          div {
+            id = "form-panel"
+            div {
+              id = "placeholder"
+              +"← Select a message to inspect"
+            }
+            div {
+              id = "send-form"
+              attributes["style"] = "display:none"
+              h2 { id = "form-name" }
+              div(classes = "msg-detail-path") { id = "form-path" }
+              div(classes = "msg-detail-desc") { id = "form-desc" }
+              div { id = "form-fields" }
+              div(classes = "target-row") {
+                id = "target-row"
+                div(classes = "field-group") {
+                  div(classes = "field-label") { +"Target Host" }
+                  input(classes = "field-input") {
+                    id = "target-host"
+                    type = InputType.text
+                  }
+                }
+                div(classes = "field-group") {
+                  div(classes = "field-label") { +"Target Port" }
+                  input(classes = "field-input") {
+                    id = "target-port"
+                    type = InputType.number
+                  }
+                }
+              }
+              button {
+                id = "send-btn"
+                attributes["onclick"] = "sendMessage()"
+                +"Send"
+              }
+              div { id = "send-result" }
+            }
+          }
+        }
+        div {
+          id = "event-log"
+          div {
+            id = "log-header"
+            span { +"Event Log" }
+            button {
+              id = "clear-btn"
+              attributes["onclick"] = "clearLog()"
+              +"Clear"
+            }
+          }
+          div { id = "log-entries" }
+        }
+        script {
+          id = "webui-schema-data"
+          type = "application/json"
+          unsafe { raw(schemaJson) }
+        }
+        script {
+          id = "webui-config-data"
+          type = "application/json"
+          unsafe { raw(uiConfigJson) }
+        }
+        script(src = "/assets/webui/webui.js") {}
+      }
+    }
   }
 
   /**
    * スキーマ情報を JSON 形式で返す。
    *
-   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   * @param call Ktor の [RoutingCall]
    */
-  private fun serveSchema(exchange: HttpExchange) {
-    val schemaJson =
-        mapOf(
-            "messages" to
-                schema.messages.map { spec ->
-                  mapOf(
-                      "path" to spec.path,
-                      "name" to spec.name,
-                      "description" to (spec.description ?: ""),
-                      "args" to spec.args.map { arg -> buildArgJson(arg) },
-                  )
-                },
-        )
-    sendResponse(exchange, 200, "application/json", toJson(schemaJson))
+  private suspend fun serveSchema(call: RoutingCall) {
+    call.respondText(
+        toJson(buildSchemaPayload()),
+        ContentType.Application.Json,
+        HttpStatusCode.OK,
+    )
+  }
+
+  /**
+   * フロントエンド向けのスキーマ JSON ペイロードを構築する。
+   *
+   * @return メッセージ一覧を含むマップ
+   */
+  private fun buildSchemaPayload(): Map<String, Any?> {
+    return mapOf(
+        "messages" to
+            schema.messages.map { spec ->
+              mapOf(
+                  "path" to spec.path,
+                  "name" to spec.name,
+                  "description" to (spec.description ?: ""),
+                  "args" to spec.args.map { arg -> buildArgJson(arg) },
+              )
+            },
+    )
+  }
+
+  /**
+   * フロントエンド向けの UI 設定 JSON ペイロードを構築する。
+   *
+   * @return UI 初期状態を含むマップ
+   */
+  private fun buildUiConfigPayload(): Map<String, Any?> {
+    return mapOf(
+        "mode" to config.mode.name.lowercase(),
+        "allowSend" to sendingEnabled(),
+        "defaultTargetHost" to config.defaultTargetHost,
+        "defaultTargetPort" to config.defaultTargetPort,
+        "initialMessageRef" to config.initialMessageRef,
+        "initialArgs" to config.initialArgs,
+    )
   }
 
   /**
@@ -239,14 +386,15 @@ class WebUiServer(
    * @param type OSC 型
    * @return HTML input の type 値
    */
-  private fun scalarInputType(type: OscType): String =
-      when (type) {
-        OscType.INT -> "number"
-        OscType.FLOAT -> "number"
-        OscType.BOOL -> "text"
-        OscType.STRING -> "text"
-        OscType.BLOB -> "text"
-      }
+  private fun scalarInputType(type: OscType): String {
+    return when (type) {
+      OscType.INT -> "number"
+      OscType.FLOAT -> "number"
+      OscType.BOOL -> "text"
+      OscType.STRING -> "text"
+      OscType.BLOB -> "text"
+    }
+  }
 
   /**
    * OSC 型に対応する HTML input のプレースホルダー文字列を返す。
@@ -254,14 +402,15 @@ class WebUiServer(
    * @param type OSC 型
    * @return プレースホルダー文字列
    */
-  private fun scalarPlaceholder(type: OscType): String =
-      when (type) {
-        OscType.INT -> "0"
-        OscType.FLOAT -> "0.0"
-        OscType.BOOL -> "true / false"
-        OscType.STRING -> ""
-        OscType.BLOB -> "base64"
-      }
+  private fun scalarPlaceholder(type: OscType): String {
+    return when (type) {
+      OscType.INT -> "0"
+      OscType.FLOAT -> "0.0"
+      OscType.BOOL -> "true / false"
+      OscType.STRING -> ""
+      OscType.BLOB -> "base64"
+    }
+  }
 
   /**
    * 現在のモードでメッセージ送信が有効かどうかを返す。
@@ -275,53 +424,63 @@ class WebUiServer(
    *
    * リクエストボディから送信先とメッセージ情報を解析し、ランタイム経由で送信する。
    *
-   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   * @param call Ktor の [RoutingCall]
    */
-  private fun handleSend(exchange: HttpExchange) {
+  private suspend fun handleSend(call: RoutingCall) {
     if (!sendingEnabled()) {
-      sendResponse(
-          exchange,
-          403,
-          "application/json",
+      call.respondText(
           toJson(mapOf("success" to false, "error" to "send is disabled in monitor mode")),
+          ContentType.Application.Json,
+          HttpStatusCode.Forbidden,
       )
       return
     }
 
-    val body = exchange.requestBody.readBytes().toString(StandardCharsets.UTF_8)
-    val req = mapper.readValue(body, Map::class.java)
+    val body = call.receiveText()
+    val req =
+        try {
+          mapper.readValue(body, Map::class.java)
+        } catch (e: Exception) {
+          call.respondText(
+              toJson(mapOf("success" to false, "error" to "Invalid JSON: ${e.message}")),
+              ContentType.Application.Json,
+              HttpStatusCode.BadRequest,
+          )
+          return
+        }
     val messageRef = req["messageRef"] as? String
     val host = req["host"] as? String
     val port = (req["port"] as? Number)?.toInt()
 
     if (messageRef == null || host == null || port == null) {
-      sendResponse(
-          exchange,
-          400,
-          "application/json",
+      call.respondText(
           toJson(mapOf("error" to "messageRef, host, and port are required")),
+          ContentType.Application.Json,
+          HttpStatusCode.BadRequest,
       )
       return
     }
 
     @Suppress("UNCHECKED_CAST") val args = (req["args"] as? Map<String, Any?>) ?: emptyMap()
 
-    runBlocking {
-      try {
-        runtime.send(
-            messageRef = messageRef,
-            rawArgs = args,
-            target = OscTarget(host = host, port = port),
-        )
-        sendResponse(exchange, 200, "application/json", toJson(mapOf("success" to true)))
-      } catch (e: Exception) {
-        sendResponse(
-            exchange,
-            400,
-            "application/json",
-            toJson(mapOf("success" to false, "error" to (e.message ?: "Unknown error"))),
-        )
-      }
+    // リクエスト検証後にランタイム送信を実行し、成功・失敗を JSON で返す。
+    try {
+      runtime.send(
+          messageRef = messageRef,
+          rawArgs = args,
+          target = OscTarget(host = host, port = port),
+      )
+      call.respondText(
+          toJson(mapOf("success" to true)),
+          ContentType.Application.Json,
+          HttpStatusCode.OK,
+      )
+    } catch (e: Exception) {
+      call.respondText(
+          toJson(mapOf("success" to false, "error" to (e.message ?: "Unknown error"))),
+          ContentType.Application.Json,
+          HttpStatusCode.BadRequest,
+      )
     }
   }
 
@@ -330,26 +489,36 @@ class WebUiServer(
    *
    * クライアントを登録し、接続が切れるまでイベントを配信し続ける。
    *
-   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
+   * @param call Ktor の [RoutingCall]
    */
-  private fun handleEvents(exchange: HttpExchange) {
-    exchange.responseHeaders.add("Content-Type", "text/event-stream")
-    exchange.responseHeaders.add("Cache-Control", "no-cache")
-    exchange.responseHeaders.add("Connection", "keep-alive")
-    exchange.responseHeaders.add("Access-Control-Allow-Origin", "*")
-    exchange.sendResponseHeaders(200, 0)
-
-    val client = SseClient(PrintWriter(exchange.responseBody, true))
+  private suspend fun handleEvents(call: RoutingCall) {
+    val client = SseClient()
     sseClients.add(client)
     client.send("data: ${toJson(mapOf("type" to "connected"))}\n\n")
 
+    call.response.header(HttpHeaders.CacheControl, "no-cache")
+    call.response.header(HttpHeaders.Connection, "keep-alive")
+    call.response.header(HttpHeaders.AccessControlAllowOrigin, "*")
+
     try {
-      client.writeLoop()
+      call.respondTextWriter(ContentType.Text.EventStream, HttpStatusCode.OK) {
+        // キューからイベントを順に取り出し、無通信時は heartbeat を返して接続を維持する。
+        while (coroutineContext.isActive) {
+          val event = client.awaitEvent(timeoutMs = 5000)
+          if (event == null) {
+            if (client.isClosed()) {
+              break
+            }
+            write(":\n\n")
+          } else {
+            write(event)
+          }
+          flush()
+        }
+      }
     } finally {
       sseClients.remove(client)
-      try {
-        exchange.responseBody.close()
-      } catch (_: Exception) {}
+      client.close()
     }
   }
 
@@ -377,82 +546,68 @@ class WebUiServer(
    * @param event シリアライズ対象のランタイムイベント
    * @return JSON 文字列
    */
-  private fun serializeRuntimeEvent(event: OscRuntimeEvent): String =
-      when (event) {
-        is OscRuntimeEvent.Received ->
-            toJson(
-                mapOf(
-                    "type" to "received",
-                    "path" to event.spec.path,
-                    "args" to event.namedArgs,
-                ),
-            )
+  private fun serializeRuntimeEvent(event: OscRuntimeEvent): String {
+    return when (event) {
+      is OscRuntimeEvent.Received ->
+          toJson(
+              mapOf(
+                  "type" to "received",
+                  "path" to event.spec.path,
+                  "args" to event.namedArgs,
+              ),
+          )
 
-        is OscRuntimeEvent.ValidationError ->
-            toJson(
-                mapOf(
-                    "type" to "validation_error",
-                    "address" to event.address,
-                    "reason" to event.reason,
-                ),
-            )
+      is OscRuntimeEvent.ValidationError ->
+          toJson(
+              mapOf(
+                  "type" to "validation_error",
+                  "address" to event.address,
+                  "reason" to event.reason,
+              ),
+          )
 
-        is OscRuntimeEvent.TransportErrorEvent ->
-            toJson(
-                mapOf(
-                    "type" to "transport_error",
-                    "message" to event.error.cause.message,
-                ),
-            )
+      is OscRuntimeEvent.TransportErrorEvent ->
+          toJson(
+              mapOf(
+                  "type" to "transport_error",
+                  "message" to event.error.cause.message,
+              ),
+          )
 
-        is OscRuntimeEvent.SendStarted ->
-            toJson(
-                mapOf(
-                    "type" to "send_started",
-                    "messageRef" to event.messageRef,
-                    "args" to event.args,
-                    "targetHost" to event.target.host,
-                    "targetPort" to event.target.port,
-                ),
-            )
+      is OscRuntimeEvent.SendStarted ->
+          toJson(
+              mapOf(
+                  "type" to "send_started",
+                  "messageRef" to event.messageRef,
+                  "args" to event.args,
+                  "targetHost" to event.target.host,
+                  "targetPort" to event.target.port,
+              ),
+          )
 
-        is OscRuntimeEvent.SendSucceeded ->
-            toJson(
-                mapOf(
-                    "type" to "send_succeeded",
-                    "messageRef" to event.messageRef,
-                    "args" to event.args,
-                    "targetHost" to event.target.host,
-                    "targetPort" to event.target.port,
-                ),
-            )
+      is OscRuntimeEvent.SendSucceeded ->
+          toJson(
+              mapOf(
+                  "type" to "send_succeeded",
+                  "messageRef" to event.messageRef,
+                  "args" to event.args,
+                  "targetHost" to event.target.host,
+                  "targetPort" to event.target.port,
+              ),
+          )
 
-        is OscRuntimeEvent.SendFailed ->
-            toJson(
-                mapOf(
-                    "type" to "send_failed",
-                    "messageRef" to event.messageRef,
-                    "error" to event.cause.message,
-                    "args" to event.args,
-                    "targetHost" to event.target.host,
-                    "targetPort" to event.target.port,
-                ),
-            )
-      }
-
-  /**
-   * HTTP レスポンスを送信する。
-   *
-   * @param exchange HTTP リクエスト/レスポンスの交換オブジェクト
-   * @param status HTTP ステータスコード
-   * @param contentType Content-Type ヘッダー値
-   * @param body レスポンスボディ文字列
-   */
-  private fun sendResponse(exchange: HttpExchange, status: Int, contentType: String, body: String) {
-    val bytes = body.toByteArray(StandardCharsets.UTF_8)
-    exchange.responseHeaders.add("Content-Type", contentType)
-    exchange.sendResponseHeaders(status, bytes.size.toLong())
-    exchange.responseBody.use { it.write(bytes) }
+      is OscRuntimeEvent.SendFailed ->
+          toJson(
+              mapOf(
+                  "type" to "send_failed",
+                  "messageRef" to event.messageRef,
+                  "error" to event.cause.message,
+                  "args" to event.args,
+                  "targetHost" to event.target.host,
+                  "targetPort" to event.target.port,
+              ),
+          )
+    }
   }
 
   /**
@@ -461,333 +616,54 @@ class WebUiServer(
    * @param obj シリアライズ対象のオブジェクト
    * @return JSON 文字列
    */
-  private fun toJson(obj: Any?): String = mapper.writeValueAsString(obj)
+  private fun toJson(obj: Any?): String {
+    return mapper.writeValueAsString(obj)
+  }
 
   /**
-   * Web UI のメイン HTML ページを生成する。
+   * HTML 内に安全に埋め込める JSON 文字列へ変換する。
    *
-   * スキーマ情報と設定を埋め込んだシングルページ HTML を構築する。
-   *
-   * @return 完全な HTML 文字列
+   * @param obj シリアライズ対象のオブジェクト
+   * @return HTML script タグへ埋め込み可能な JSON 文字列
    */
-  private fun buildHtml(): String {
-    val messagesJs =
-        schema.messages.joinToString(",\n") { spec ->
-          val argsJs = spec.args.joinToString(",\n") { arg -> toJson(buildArgJson(arg)) }
-          """{"path":${toJson(spec.path)},"name":${toJson(spec.name)},"description":${toJson(spec.description ?: "")},"args":[$argsJs]}"""
-        }
+  private fun toJsonForHtmlScript(obj: Any?): String {
+    return toJson(obj).replace("</", "<\\/")
+  }
 
-    val title =
-        when (config.mode) {
-          WebUiMode.MONITOR -> "OSC Monitor"
-          WebUiMode.SENDER -> "OSC Sender"
-          WebUiMode.MCP -> "OSC MCP Console"
-        }
-    val subtitle =
-        when (config.mode) {
-          WebUiMode.MONITOR -> "Receive OSC traffic and inspect the schema."
-          WebUiMode.SENDER -> "Select a message and send it to an OSC target."
-          WebUiMode.MCP -> "Inspect MCP requests while testing OSC sends from the browser."
-        }
-
-    return """
-<!DOCTYPE html>
-<html lang="en">
-<head>
-  <meta charset="utf-8">
-  <title>$title</title>
-  <style>
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body { font-family: 'Courier New', monospace; background: #0f172a; color: #e2e8f0; height: 100vh; display: flex; flex-direction: column; overflow: hidden; }
-    header { background: #1e293b; padding: 10px 20px; border-bottom: 1px solid #334155; flex-shrink: 0; }
-    header h1 { font-size: 16px; color: #60a5fa; }
-    header p { font-size: 11px; color: #94a3b8; margin-top: 2px; }
-    .main-container { display: flex; flex: 1; overflow: hidden; }
-    #schema-list { width: 240px; background: #1e293b; border-right: 1px solid #334155; overflow-y: auto; padding: 8px; flex-shrink: 0; }
-    #schema-list h3 { font-size: 11px; color: #64748b; text-transform: uppercase; letter-spacing: 1px; padding: 4px 0 8px; }
-    .msg-item { padding: 7px 8px; margin: 2px 0; border-radius: 5px; cursor: pointer; border: 1px solid transparent; }
-    .msg-item:hover { background: #1e3a5f; border-color: #3b82f6; }
-    .msg-item.active { background: #1e3a5f; border-color: #60a5fa; }
-    .msg-path { font-size: 12px; color: #93c5fd; }
-    .msg-name { font-size: 10px; color: #64748b; margin-top: 1px; }
-    #form-panel { flex: 1; overflow-y: auto; padding: 20px; }
-    #form-panel h2 { font-size: 15px; color: #60a5fa; margin-bottom: 4px; }
-    .msg-detail-path { font-size: 12px; color: #38bdf8; margin-bottom: 3px; }
-    .msg-detail-desc { font-size: 12px; color: #64748b; margin-bottom: 14px; }
-    .field-group { margin-bottom: 10px; }
-    .field-label { font-size: 10px; color: #94a3b8; margin-bottom: 3px; text-transform: uppercase; letter-spacing: 0.5px; }
-    .field-input { width: 100%; padding: 7px 9px; background: #1e293b; border: 1px solid #334155; color: #e2e8f0; border-radius: 4px; font-family: 'Courier New', monospace; font-size: 13px; }
-    .field-input:focus { outline: none; border-color: #60a5fa; }
-    .target-row { display: flex; gap: 10px; margin: 14px 0 16px; }
-    .target-row .field-group { flex: 1; }
-    #send-btn { background: #3b82f6; color: white; border: none; padding: 9px 22px; border-radius: 5px; cursor: pointer; font-size: 13px; font-family: 'Courier New', monospace; }
-    #send-btn:hover { background: #2563eb; }
-    #send-result { margin-top: 10px; padding: 7px 10px; border-radius: 4px; font-size: 12px; display: none; }
-    .result-ok { background: #064e3b; color: #6ee7b7; }
-    .result-err { background: #7f1d1d; color: #fca5a5; }
-    #placeholder { color: #475569; text-align: center; padding-top: 60px; font-size: 13px; }
-    #event-log { height: 200px; background: #1e293b; border-top: 1px solid #334155; display: flex; flex-direction: column; flex-shrink: 0; }
-    #log-header { padding: 6px 14px; background: #0f172a; font-size: 11px; color: #64748b; border-bottom: 1px solid #334155; display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
-    #log-entries { overflow-y: auto; flex: 1; padding: 4px 0; }
-    .log-entry { padding: 2px 14px; font-size: 11px; }
-    .log-recv { color: #34d399; }
-    .log-send-start { color: #60a5fa; }
-    .log-send-ok { color: #93c5fd; }
-    .log-send-fail, .log-error { color: #f87171; }
-    .log-conn { color: #a78bfa; }
-    .log-mcp { color: #fbbf24; }
-    .log-time { color: #475569; margin-right: 6px; }
-    #clear-btn { background: none; border: none; color: #64748b; cursor: pointer; font-size: 11px; font-family: inherit; }
-    #clear-btn:hover { color: #94a3b8; }
-  </style>
-</head>
-<body>
-  <header>
-    <h1>$title</h1>
-    <p>$subtitle</p>
-    <p id="schema-label">Loading schema...</p>
-  </header>
-  <div class="main-container">
-    <div id="schema-list">
-      <h3>Messages</h3>
-      <div id="message-items">Loading...</div>
-    </div>
-    <div id="form-panel">
-      <div id="placeholder">&#8592; Select a message to inspect</div>
-      <div id="send-form" style="display:none">
-        <h2 id="form-name"></h2>
-        <div class="msg-detail-path" id="form-path"></div>
-        <div class="msg-detail-desc" id="form-desc"></div>
-        <div id="form-fields"></div>
-        <div class="target-row" id="target-row">
-          <div class="field-group">
-            <div class="field-label">Target Host</div>
-            <input type="text" id="target-host" class="field-input">
-          </div>
-          <div class="field-group">
-            <div class="field-label">Target Port</div>
-            <input type="number" id="target-port" class="field-input">
-          </div>
-        </div>
-        <button id="send-btn" onclick="sendMessage()">Send</button>
-        <div id="send-result"></div>
-      </div>
-    </div>
-  </div>
-  <div id="event-log">
-    <div id="log-header">
-      <span>Event Log</span>
-      <button id="clear-btn" onclick="clearLog()">Clear</button>
-    </div>
-    <div id="log-entries"></div>
-  </div>
-  <script>
-    var schema = {messages: [$messagesJs]};
-    var selectedMessage = null;
-    var uiConfig = {
-      mode: ${toJson(config.mode.name.lowercase())},
-      allowSend: ${toJson(sendingEnabled())},
-      defaultTargetHost: ${toJson(config.defaultTargetHost)},
-      defaultTargetPort: ${toJson(config.defaultTargetPort)},
-      initialMessageRef: ${toJson(config.initialMessageRef)},
-      initialArgs: ${toJson(config.initialArgs)}
-    };
-
-    (function init() {
-      document.getElementById('schema-label').textContent = schema.messages.length + ' messages';
-      document.getElementById('target-host').value = uiConfig.defaultTargetHost;
-      document.getElementById('target-port').value = uiConfig.defaultTargetPort;
-      renderMessageList(schema.messages);
-      applyInitialSelection();
-    })();
-
-    function renderMessageList(messages) {
-      var container = document.getElementById('message-items');
-      container.innerHTML = '';
-      messages.forEach(function(msg) {
-        var item = document.createElement('div');
-        item.className = 'msg-item';
-        item.dataset.messageName = msg.name;
-        item.dataset.messagePath = msg.path;
-        item.innerHTML = '<div class="msg-path">' + esc(msg.path) + '</div><div class="msg-name">' + esc(msg.name) + '</div>';
-        item.onclick = function() { selectMessage(msg, item); };
-        container.appendChild(item);
-      });
+  /**
+   * 現在モードに対応するページタイトルを返す。
+   *
+   * @return ページタイトル文字列
+   */
+  private fun pageTitle(): String {
+    return when (config.mode) {
+      WebUiMode.MONITOR -> "OSC Monitor"
+      WebUiMode.SENDER -> "OSC Sender"
+      WebUiMode.MCP -> "OSC MCP Console"
     }
+  }
 
-    function applyInitialSelection() {
-      if (!uiConfig.initialMessageRef) return;
-      var initialItem = Array.prototype.find.call(document.querySelectorAll('.msg-item'), function(item) {
-        return item.dataset.messageName === uiConfig.initialMessageRef || item.dataset.messagePath === uiConfig.initialMessageRef;
-      });
-      if (!initialItem) return;
-      var message = schema.messages.find(function(msg) {
-        return msg.name === initialItem.dataset.messageName || msg.path === initialItem.dataset.messagePath;
-      });
-      if (message) {
-        selectMessage(message, initialItem);
-      }
+  /**
+   * 現在モードに対応するページサブタイトルを返す。
+   *
+   * @return ページサブタイトル文字列
+   */
+  private fun pageSubtitle(): String {
+    return when (config.mode) {
+      WebUiMode.MONITOR -> "Receive OSC traffic and inspect the schema."
+      WebUiMode.SENDER -> "Select a message and send it to an OSC target."
+      WebUiMode.MCP -> "Inspect MCP requests while testing OSC sends from the browser."
     }
-
-    function selectMessage(msg, element) {
-      document.querySelectorAll('.msg-item').forEach(function(e) { e.classList.remove('active'); });
-      element.classList.add('active');
-      selectedMessage = msg;
-      showForm(msg);
-    }
-
-    function showForm(msg) {
-      document.getElementById('placeholder').style.display = 'none';
-      var form = document.getElementById('send-form');
-      form.style.display = 'block';
-      document.getElementById('form-name').textContent = msg.name;
-      document.getElementById('form-path').textContent = msg.path;
-      document.getElementById('form-desc').textContent = msg.description || '';
-      document.getElementById('send-result').style.display = 'none';
-      document.getElementById('target-row').style.display = uiConfig.allowSend ? 'flex' : 'none';
-      document.getElementById('send-btn').style.display = uiConfig.allowSend ? 'inline-block' : 'none';
-
-      var fields = document.getElementById('form-fields');
-      fields.innerHTML = '';
-      msg.args.forEach(function(arg) {
-        var group = document.createElement('div');
-        group.className = 'field-group';
-        var label = document.createElement('div');
-        label.className = 'field-label';
-        label.textContent = arg.typeLabel;
-        group.appendChild(label);
-        var input = document.createElement('input');
-        input.className = 'field-input';
-        input.type = arg.inputType || 'text';
-        input.id = 'arg-' + arg.name;
-        input.placeholder = arg.placeholder || '';
-        if (arg.inputType === 'number') { input.step = 'any'; }
-        var initialValue = formatInitialValue(arg.name);
-        if (initialValue !== null) { input.value = initialValue; }
-        group.appendChild(input);
-        fields.appendChild(group);
-      });
-    }
-
-    function formatInitialValue(argName) {
-      if (!uiConfig.initialArgs || !(argName in uiConfig.initialArgs)) {
-        return null;
-      }
-      var value = uiConfig.initialArgs[argName];
-      if (value === null || value === undefined) return '';
-      if (typeof value === 'object') return JSON.stringify(value);
-      return String(value);
-    }
-
-    function sendMessage() {
-      if (!selectedMessage || !uiConfig.allowSend) return;
-      var args = {};
-      selectedMessage.args.forEach(function(arg) {
-        var input = document.getElementById('arg-' + arg.name);
-        var val = input ? input.value : '';
-        args[arg.name] = parseArgValue(val, arg.type, arg.kind);
-      });
-
-      var host = document.getElementById('target-host').value;
-      var port = parseInt(document.getElementById('target-port').value, 10);
-
-      fetch('/api/send', {
-        method: 'POST',
-        headers: {'Content-Type': 'application/json'},
-        body: JSON.stringify({messageRef: selectedMessage.name, host: host, port: port, args: args})
-      }).then(function(r) { return r.json(); }).then(function(data) {
-        var result = document.getElementById('send-result');
-        result.style.display = 'block';
-        if (data.success) {
-          result.className = 'result-ok';
-          result.textContent = '\u2713 Sent successfully';
-        } else {
-          result.className = 'result-err';
-          result.textContent = '\u2717 ' + (data.error || 'Send failed');
-        }
-      }).catch(function() {
-        var result = document.getElementById('send-result');
-        result.style.display = 'block';
-        result.className = 'result-err';
-        result.textContent = '\u2717 Network error';
-      });
-    }
-
-    function parseArgValue(val, type, kind) {
-      if (kind === 'array') {
-        try { return JSON.parse(val); } catch(e) { return val; }
-      }
-      if (type === 'int') return parseInt(val, 10);
-      if (type === 'float') return parseFloat(val);
-      if (type === 'bool') return val === 'true' || val === '1' || val === 'yes';
-      return val;
-    }
-
-    function clearLog() {
-      document.getElementById('log-entries').innerHTML = '';
-    }
-
-    function addLog(cssClass, text) {
-      var el = document.createElement('div');
-      el.className = 'log-entry ' + cssClass;
-      var d = new Date();
-      var time = d.toTimeString().substring(0, 8);
-      el.innerHTML = '<span class="log-time">' + time + '</span>' + esc(text);
-      var container = document.getElementById('log-entries');
-      container.insertBefore(el, container.firstChild);
-    }
-
-    function esc(s) {
-      return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
-    }
-
-    var evtSource = new EventSource('/api/events');
-    evtSource.onmessage = function(e) {
-      var event;
-      try { event = JSON.parse(e.data); } catch(ex) { return; }
-      switch (event.type) {
-        case 'connected':
-          addLog('log-conn', 'Connected to event stream'); break;
-        case 'received':
-          addLog('log-recv', 'recv ' + event.path + ' ' + JSON.stringify(event.args)); break;
-        case 'send_started':
-          addLog('log-send-start', '\u2192 sending ' + event.messageRef + ' to ' + event.targetHost + ':' + event.targetPort); break;
-        case 'send_succeeded':
-          addLog('log-send-ok', '\u2713 sent ' + event.messageRef + ' to ' + event.targetHost + ':' + event.targetPort); break;
-        case 'send_failed':
-          addLog('log-send-fail', '\u2717 failed ' + event.messageRef + ': ' + event.error); break;
-        case 'validation_error':
-          addLog('log-error', 'validation error ' + (event.address || '-') + ': ' + event.reason); break;
-        case 'transport_error':
-          addLog('log-error', 'transport error: ' + event.message); break;
-        case 'mcp_request':
-          addLog('log-mcp', 'mcp request ' + event.message); break;
-        case 'mcp_success':
-          addLog('log-mcp', 'mcp success ' + event.message); break;
-        case 'mcp_failure':
-          addLog('log-error', 'mcp failure ' + event.message); break;
-      }
-    };
-    evtSource.onerror = function() {
-      addLog('log-error', 'Event stream disconnected, reconnecting...');
-    };
-  </script>
-</body>
-</html>
-"""
-        .trimIndent()
   }
 }
 
 /**
  * SSE クライアント接続を管理するクラス。
  *
- * キューベースでイベントデータを書き込み、接続が切れた場合は自動的に検出する。
- *
- * @param writer クライアントへの出力ライター
+ * Ktor のレスポンスライターに対して、イベントキューを介して逐次配信する。
  */
-private class SseClient(private val writer: PrintWriter) {
-  private val queue = LinkedBlockingQueue<String>(1024)
+private class SseClient {
+  private val queue = Channel<String>(1024)
 
   /**
    * データをキューに追加して送信予約する。
@@ -796,26 +672,31 @@ private class SseClient(private val writer: PrintWriter) {
    * @return キューへの追加に成功した場合 true
    */
   fun send(data: String): Boolean {
-    return queue.offer(data)
+    return queue.trySend(data).isSuccess
   }
 
   /**
-   * キューからデータを取り出してクライアントに書き込むループ。
+   * 指定時間待機して次のイベントを取得する。
    *
-   * 接続が切れるか書き込みエラーが発生するまでブロッキングで実行される。
+   * @param timeoutMs 待機時間（ミリ秒）
+   * @return 取得したイベント文字列。タイムアウトまたはクローズ済みの場合は null
    */
-  fun writeLoop() {
-    while (true) {
-      val data = queue.poll(5, TimeUnit.SECONDS)
-      if (data != null) {
-        writer.print(data)
-        writer.flush()
-        if (writer.checkError()) break
-      } else {
-        writer.print(":\n\n")
-        writer.flush()
-        if (writer.checkError()) break
-      }
-    }
+  suspend fun awaitEvent(timeoutMs: Long): String? {
+    return withTimeoutOrNull(timeoutMs) { queue.receiveCatching().getOrNull() }
+  }
+
+  /**
+   * クライアントがクローズ済みかどうかを返す。
+   *
+   * @return クローズ済みなら true
+   */
+  @OptIn(DelicateCoroutinesApi::class)
+  fun isClosed(): Boolean {
+    return queue.isClosedForSend
+  }
+
+  /** イベントキューをクローズする。 */
+  fun close() {
+    queue.close()
   }
 }

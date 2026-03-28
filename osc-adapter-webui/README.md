@@ -107,7 +107,9 @@ osc mcp sample/kotlin-mcp-stdio/schema.yaml --host 127.0.0.1 --port 9000 --webui
 
 ### `GET /`
 
-組み込み HTML を返します。
+Ktor CIO 上で生成した HTML を返します。
+
+HTML 本体は Kotlin / kotlinx.html で生成し、CSS / JavaScript は classpath リソースの `/assets/webui/*` から配信します。
 
 ### `GET /api/schema`
 
@@ -194,7 +196,8 @@ monitor mode での失敗例:
 
 Kotlin DSL でスキーマを記述し、リアルタイムで構造を確認できる Web エディタです。
 
-バックエンドは Ktor CIO を使用し、エディタ HTML は classpath リソース (`editor/index.html`) として配信します。
+バックエンドは Ktor CIO を使用し、エディタ HTML は kotlinx.html で生成します。
+CSS / JavaScript は `/assets/editor/editor.css` と `/assets/editor/editor.js` から配信します。
 
 ### 画面イメージ
 
@@ -241,14 +244,15 @@ osc editor --port 8080    # ポートを指定して起動
 | 層 | 技術 |
 |---|---|
 | HTTP サーバー | Ktor CIO |
-| エディタ UI | HTML / CSS / JavaScript（`src/main/resources/editor/index.html`） |
+| monitor / sender / mcp UI | kotlinx.html + 外部 CSS / JavaScript（`src/main/resources/assets/webui/*`） |
+| エディタ UI | kotlinx.html + 外部 CSS / JavaScript（`src/main/resources/assets/editor/*`） |
 | DSL 評価 | `kotlin-scripting-jsr223` |
 
 ### HTTP API
 
 #### `GET /`
 
-エディタ HTML を classpath リソースから返します。
+エディタ HTML を kotlinx.html で生成して返します。
 
 #### `POST /api/evaluate`
 
