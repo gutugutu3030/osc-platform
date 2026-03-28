@@ -19,7 +19,7 @@ import com.oscplatform.core.schema.loader.SchemaLoader
 import com.oscplatform.core.schema.loader.SchemaPathResolver
 import com.oscplatform.core.transport.OscTarget
 import com.oscplatform.core.transport.OscTransport
-import com.oscplatform.core.util.JsonNodeConverter
+import com.oscplatform.core.util.toKotlinValue
 import com.oscplatform.transport.udp.UdpOscTransport
 import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpMethod
@@ -1038,7 +1038,7 @@ internal object McpSchemaJsonSupport {
    * @param node 変換対象の JSON ノード
    * @return 変換された Kotlin の値（null の場合あり）
    */
-  fun jsonNodeToValue(node: JsonNode): Any? = JsonNodeConverter.jsonNodeToValue(node)
+  fun jsonNodeToValue(node: JsonNode): Any? = node.toKotlinValue()
 }
 
 /**

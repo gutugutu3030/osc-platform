@@ -1,7 +1,6 @@
 package com.oscplatform.adapter.cli
 
-import com.oscplatform.core.util.JsonNodeConverter
-import tools.jackson.databind.JsonNode
+import com.oscplatform.core.util.toKotlinValue
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 
@@ -31,16 +30,8 @@ internal object CliDynamicValueParser {
           } catch (ex: Exception) {
             throw IllegalArgumentException("Invalid JSON argument value: $raw")
           }
-      return jsonNodeToValue(node)
+      return node.toKotlinValue()
     }
     return raw
   }
-
-  /**
-   * JacksonのJsonNodeをKotlinのネイティブ型に再帰的に変換する。
-   *
-   * @param node 変換対象のJsonNode
-   * @return Kotlinのネイティブ型に変換された値。nullノードの場合はnull
-   */
-  fun jsonNodeToValue(node: JsonNode): Any? = JsonNodeConverter.jsonNodeToValue(node)
 }

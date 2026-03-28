@@ -1,6 +1,5 @@
 package com.oscplatform.adapter.cli
 
-import com.oscplatform.core.schema.OscArgNode
 import com.oscplatform.core.schema.OscSchema
 import java.nio.file.Path
 import java.time.OffsetDateTime
@@ -144,7 +143,7 @@ internal object SchemaHtmlDocRenderer {
         messages.forEach { spec ->
           val anchor = anchorId(spec.name)
           appendLine(
-              "      <tr><td><a href=\"#$anchor\"><code>${escape(spec.name)}</code></a></td><td><code>${escape(spec.path)}</code></td><td>${escape(spec.description ?: "")}</td><td>${escape(formatArgSignature(spec.args))}</td></tr>")
+              "      <tr><td><a href=\"#$anchor\"><code>${escape(spec.name)}</code></a></td><td><code>${escape(spec.path)}</code></td><td>${escape(spec.description ?: "")}</td><td>${escape(spec.args.formatArgSignature())}</td></tr>")
         }
         appendLine("    </tbody>")
         appendLine("  </table>")
@@ -164,7 +163,7 @@ internal object SchemaHtmlDocRenderer {
           appendLine("      <tbody>")
           spec.args.forEach { arg ->
             appendLine(
-                "        <tr><td><code>${escape(arg.name)}</code></td><td>${escape(kindOf(arg))}</td><td>${escape(typeOf(arg))}</td><td>${escape(constraintsOf(arg))}</td></tr>")
+                "        <tr><td><code>${escape(arg.name)}</code></td><td>${escape(arg.kindLabel())}</td><td>${escape(arg.typeLabel())}</td><td>${escape(arg.constraintsLabel())}</td></tr>")
           }
           appendLine("      </tbody>")
           appendLine("    </table>")
@@ -194,39 +193,6 @@ internal object SchemaHtmlDocRenderer {
       appendLine("</html>")
     }
   }
-
-  /**
-   * 引数リストからシグネチャ文字列をフォーマットする。
-   *
-   * @param args フォーマット対象の引数ノードリスト
-   * @return フォーマットされたシグネチャ文字列。引数がない場合は"-"
-   */
-  private fun formatArgSignature(args: List<OscArgNode>): String =
-      SchemaDocRenderSupport.formatArgSignature(args)
-
-  /**
-   * 引数ノードの種別を文字列で返す。
-   *
-   * @param arg 種別を判定する引数ノード
-   * @return "scalar"または"array"
-   */
-  private fun kindOf(arg: OscArgNode): String = SchemaDocRenderSupport.kindOf(arg)
-
-  /**
-   * 引数ノードの型を表示用文字列に変換する。
-   *
-   * @param arg 型情報を取得する引数ノード
-   * @return 型の表示用文字列（例: "int", "array&lt;float&gt;"）
-   */
-  private fun typeOf(arg: OscArgNode): String = SchemaDocRenderSupport.typeOf(arg)
-
-  /**
-   * 引数ノードの制約情報を表示用文字列に変換する。
-   *
-   * @param arg 制約情報を取得する引数ノード
-   * @return 制約の表示用文字列（例: "role=length", "length=10", "-"）
-   */
-  private fun constraintsOf(arg: OscArgNode): String = SchemaDocRenderSupport.constraintsOf(arg)
 
   /**
    * メッセージ名からHTMLアンカーIDを生成する。
