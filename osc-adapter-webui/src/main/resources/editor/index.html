@@ -755,7 +755,6 @@
       var lines = text.split('\n');
       var result = [];
       var depth = 0;
-      var inString = false;
 
       for (var i = 0; i < lines.length; i++) {
         var trimmed = lines[i].trim();
@@ -784,10 +783,8 @@
           }
           if (ch === '"') { localInString = true; continue; }
           if (ch === '{') depth++;
-          else if (ch === '}' && !leadingClose) depth--;
-          else if (ch === '}' && leadingClose && c > 0) depth--;
+          else if (ch === '}' && !(leadingClose && c === 0)) depth--;
         }
-        leadingClose = false;
       }
 
       // カーソル位置を行頭基準で保持
