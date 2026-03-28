@@ -5,7 +5,7 @@ import tools.jackson.databind.JsonNode
 /**
  * Jackson [JsonNode] を Kotlin のネイティブ型へ再帰的に変換するユーティリティ。
  *
- * 複数のアダプタモジュールで共通に必要となる JSON → Kotlin 変換ロジックを集約し、 重複実装を排除する。
+ * 複数のアダプタモジュールで共通に必要となる JSON → Kotlin 変換ロジックを集約し、重複実装を排除する。
  */
 object JsonNodeConverter {
   /**

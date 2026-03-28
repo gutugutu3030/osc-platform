@@ -11,7 +11,7 @@ import com.oscplatform.core.schema.ScalarRole
 /**
  * スキーマドキュメントレンダラー共通のヘルパー関数を提供するユーティリティオブジェクト。
  *
- * [SchemaHtmlDocRenderer] と [SchemaMarkdownDocRenderer] で共有される引数シグネチャ・型・制約の フォーマット処理を集約する。
+ * [SchemaHtmlDocRenderer] と [SchemaMarkdownDocRenderer] で共有される引数シグネチャ・型・制約のフォーマット処理を集約する。
  */
 internal object SchemaDocRenderSupport {
   /**
