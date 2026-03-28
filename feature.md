@@ -348,12 +348,12 @@ data class MeshPoints(
 ```kotlin
 plugins {
     kotlin("jvm") version "2.1.20"
-    id("com.oscplatform.schema-codegen") version "0.9.2"
+    id("com.oscplatform.schema-codegen") version "0.10.0-SNAPSHOT"
 }
 
 dependencies {
-    implementation("com.oscplatform:osc-core:0.9.2")
-    implementation("com.oscplatform:osc-transport-udp:0.9.2")
+    implementation("com.oscplatform:osc-core:0.10.0-SNAPSHOT")
+    implementation("com.oscplatform:osc-transport-udp:0.10.0-SNAPSHOT")
 }
 
 oscSchemaCodegen {
