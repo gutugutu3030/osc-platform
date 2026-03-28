@@ -236,18 +236,6 @@ osc editor --port 8080    # ポートを指定して起動
 - エラー時はエラーメッセージを表示
 - サンプルテンプレートを挿入可能
 
-### Vim 風入力に関するリサーチ
-
-現在の `<textarea>` ベースのエディタで Vim 風のモーダル入力を実現するには、以下のアプローチが考えられる。
-
-| アプローチ | 概要 | メリット | デメリット |
-|---|---|---|---|
-| **CodeMirror 6 + vim 拡張** | エディタ本体を [CodeMirror 6](https://codemirror.net/) に置き換え、公式の [codemirror-vim](https://github.com/nicknisi/codemirror.vim) 拡張を導入する | 高品質な Vim バインディングを少ない労力で組み込める。シンタックスハイライトや行番号も付与可能 | バンドルサイズが増加し、現在の単一 HTML 構成からモジュールバンドラーが必要になる |
-| **Monaco Editor + vim 拡張** | エディタ本体を [Monaco Editor](https://microsoft.github.io/monaco-editor/) に置き換え、[monaco-vim](https://github.com/nicknisi/monaco-vim) を導入する | VS Code ライクな体験。LSP との統合もしやすい | Monaco 本体が大きく、ビルドパイプラインが複雑になる |
-| **自前実装** | `<textarea>` の `keydown` でモード（Normal / Insert / Visual）を管理し、`h/j/k/l` 等のキーマッピングを実装する | 外部依存なし | 実装コストが非常に高く、完全な Vim 互換は困難 |
-
-**推奨**: CodeMirror 6 + vim 拡張の採用が最も現実的。現行のコンテキスト補完ロジックは CodeMirror の補完 API に移行でき、Vim モードはプラグインとして追加するだけで実現できる。
-
 ### 技術構成
 
 | 層 | 技術 |
