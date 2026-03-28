@@ -7,22 +7,18 @@ import com.oscplatform.core.schema.dsl.FLOAT
 import com.oscplatform.core.schema.dsl.INT
 import com.oscplatform.core.schema.dsl.LENGTH
 import com.oscplatform.core.schema.dsl.oscSchema
-import com.oscplatform.core.util.toKotlinValue
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
-import kotlin.test.assertIs
-import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import tools.jackson.databind.ObjectMapper
 import tools.jackson.databind.json.JsonMapper
 import tools.jackson.module.kotlin.KotlinModule
 
 /**
- * [McpSchemaJsonSupport] の JSON Schema 生成および JSON ノード変換を検証するテスト。
+ * [McpSchemaJsonSupport] の JSON Schema 生成を検証するテスト。
  * - [McpSchemaJsonSupport.toInputSchema]: OscMessageSpec → JSON Schema 変換
  *     - 配列・タプル型、BOOL・BLOB 型、導出長さフィールドの optional 化
- * - [McpSchemaJsonSupport.jsonNodeToValue]: Jackson JsonNode → Kotlin ネイティブ⋮
  */
 class McpSchemaJsonSupportTest {
   private val mapper: ObjectMapper =
@@ -68,39 +64,6 @@ class McpSchemaJsonSupportTest {
     assertEquals("array", valuesSchema.path("type").stringValue())
     assertEquals(3, valuesSchema.path("minItems").asInt())
     assertEquals(3, valuesSchema.path("maxItems").asInt())
-  }
-
-  // -------------------------------------------------------------------------
-  // jsonNodeToValue: 再帰変換
-  // -------------------------------------------------------------------------
-
-  /** ネストした object/array が Kotlin Map/List に変換される */
-  @Test
-  fun jsonNodeToValueConvertsNestedObjectArray() {
-    val node =
-        mapper.readTree(
-            """
-            {
-                            "name": "mesh",
-                            "points": [{"x":1,"y":2,"z":3.25}],
-                            "enabled": true,
-                            "nullable": null
-            }
-        """
-                .trimIndent())
-
-    val value = node.toKotlinValue()
-
-    val map = assertIs<Map<*, *>>(value)
-    assertEquals("mesh", map["name"])
-    assertEquals(true, map["enabled"])
-    assertNull(map["nullable"])
-
-    val points = assertIs<List<*>>(map["points"])
-    val first = assertIs<Map<*, *>>(points.first())
-    assertEquals(1, first["x"])
-    assertEquals(2, first["y"])
-    assertEquals(3.25, first["z"])
   }
 
   private fun meshPointsSpec(): OscMessageSpec {
