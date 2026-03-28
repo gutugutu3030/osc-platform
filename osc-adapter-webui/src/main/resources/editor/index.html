@@ -91,7 +91,10 @@
     <div class="editor-pane">
       <div class="editor-header">
         <span>Kotlin DSL Editor</span>
-        <button class="template-btn" onclick="loadTemplate()">サンプルを挿入</button>
+        <div style="display:flex;gap:8px;">
+          <button class="template-btn" onclick="formatCode()" title="Ctrl+Shift+F">フォーマット</button>
+          <button class="template-btn" onclick="loadTemplate()">サンプルを挿入</button>
+        </div>
       </div>
       <div class="editor-wrap">
         <textarea id="editor" spellcheck="false" autocomplete="off" placeholder="oscSchema {&#10;    message(&quot;/example/path&quot;) {&#10;        description(&quot;メッセージの説明&quot;)&#10;        scalar(&quot;value&quot;, INT)&#10;    }&#10;}"></textarea>
@@ -485,6 +488,110 @@
         var suggestions = getSuggestions(context, prefix);
         showAc(suggestions, prefix);
       }
+
+      // Ctrl+Shift+F でフォーマット
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'f' || e.key === 'F')) {
+        e.preventDefault();
+        formatCode();
+        return;
+      }
+
+      // 括弧ペア補完: { → {}, ( → (), [ → [], " → ""
+      var pairs = { '{': '}', '(': ')', '[': ']', '"': '"' };
+      if (pairs[e.key] && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        var start = this.selectionStart;
+        var end = this.selectionEnd;
+        var val = this.value;
+        // 選択範囲がある場合は囲む
+        if (start !== end) {
+          e.preventDefault();
+          var selected = val.substring(start, end);
+          this.value = val.substring(0, start) + e.key + selected + pairs[e.key] + val.substring(end);
+          this.selectionStart = start + 1;
+          this.selectionEnd = end + 1;
+          triggerEvaluate();
+          return;
+        }
+        // ダブルクォートの場合: 文字列内では補完しない
+        if (e.key === '"') {
+          var beforeCursor = val.substring(0, start);
+          var lastLine = beforeCursor.split('\n').pop() || '';
+          var lineQuotes = (lastLine.match(/"/g) || []).length;
+          if (lineQuotes % 2 === 1) return; // 文字列内なので通常の入力
+        }
+        e.preventDefault();
+        this.value = val.substring(0, start) + e.key + pairs[e.key] + val.substring(end);
+        this.selectionStart = this.selectionEnd = start + 1;
+        triggerEvaluate();
+        triggerAc();
+        return;
+      }
+
+      // 閉じ括弧のスキップ: カーソル直後が対応する閉じ文字なら上書きせずスキップ
+      var closers = ['}', ')', ']', '"'];
+      if (closers.indexOf(e.key) !== -1 && !e.ctrlKey && !e.metaKey && !e.altKey) {
+        var start = this.selectionStart;
+        if (this.value[start] === e.key) {
+          e.preventDefault();
+          this.selectionStart = this.selectionEnd = start + 1;
+          return;
+        }
+      }
+
+      // Backspace で空ペアを一括削除
+      if (e.key === 'Backspace' && !e.ctrlKey && !e.metaKey) {
+        var start = this.selectionStart;
+        if (start > 0 && start === this.selectionEnd) {
+          var before = this.value[start - 1];
+          var after = this.value[start];
+          if ((before === '{' && after === '}') || (before === '(' && after === ')') ||
+              (before === '[' && after === ']') || (before === '"' && after === '"')) {
+            e.preventDefault();
+            this.value = this.value.substring(0, start - 1) + this.value.substring(start + 1);
+            this.selectionStart = this.selectionEnd = start - 1;
+            triggerEvaluate();
+            return;
+          }
+        }
+      }
+
+      // Enter キーで自動インデント
+      if (e.key === 'Enter' && !acVisible) {
+        var start = this.selectionStart;
+        var val = this.value;
+        var beforeCursor = val.substring(0, start);
+        var afterCursor = val.substring(start);
+        // 現在行のインデントを取得
+        var currentLine = beforeCursor.split('\n').pop() || '';
+        var indent = currentLine.match(/^(\s*)/)[1];
+        // 直前が { の場合はインデントを深くする
+        var charBefore = beforeCursor.trimEnd().slice(-1);
+        if (charBefore === '{') {
+          e.preventDefault();
+          var newIndent = indent + '    ';
+          // 直後が } の場合は閉じ括弧も改行する
+          if (afterCursor.trimStart()[0] === '}') {
+            var insert = '\n' + newIndent + '\n' + indent;
+            this.value = beforeCursor + insert + afterCursor;
+            this.selectionStart = this.selectionEnd = start + 1 + newIndent.length;
+          } else {
+            var insert = '\n' + newIndent;
+            this.value = beforeCursor + insert + afterCursor;
+            this.selectionStart = this.selectionEnd = start + insert.length;
+          }
+          triggerEvaluate();
+          return;
+        }
+        // 通常の改行: 前の行のインデントを維持
+        if (indent) {
+          e.preventDefault();
+          var insert = '\n' + indent;
+          this.value = beforeCursor + insert + afterCursor;
+          this.selectionStart = this.selectionEnd = start + insert.length;
+          triggerEvaluate();
+          return;
+        }
+      }
     });
 
     // 入力時にデバウンスして評価 + 補完を起動
@@ -635,6 +742,71 @@
         return html;
       }
       return '';
+    }
+
+    /**
+     * エディタのテキストを DSL の構文に基づいてフォーマットする。
+     * ブレースのネストに応じてインデントを揃え、文字列リテラル内は変更しない。
+     */
+    function formatCode() {
+      var text = editor.value;
+      if (!text.trim()) return;
+
+      var lines = text.split('\n');
+      var result = [];
+      var depth = 0;
+
+      for (var i = 0; i < lines.length; i++) {
+        var trimmed = lines[i].trim();
+        if (!trimmed) {
+          // 空行はそのまま保持
+          result.push('');
+          continue;
+        }
+
+        // 行頭が } の場合はインデントを一段下げてから出力
+        var leadingClose = trimmed[0] === '}';
+        if (leadingClose && depth > 0) depth--;
+
+        var indent = '';
+        for (var d = 0; d < depth; d++) indent += '    ';
+        result.push(indent + trimmed);
+
+        // 行内のブレースを解析してネスト深さを更新（文字列内は除外）
+        var localInString = false;
+        for (var c = 0; c < trimmed.length; c++) {
+          var ch = trimmed[c];
+          if (localInString) {
+            if (ch === '\\') { c++; continue; }
+            if (ch === '"') localInString = false;
+            continue;
+          }
+          if (ch === '"') { localInString = true; continue; }
+          if (ch === '{') depth++;
+          else if (ch === '}' && !(leadingClose && c === 0)) depth--;
+        }
+      }
+
+      // カーソル位置を行頭基準で保持
+      var oldPos = editor.selectionStart;
+      var beforeCursor = text.substring(0, oldPos);
+      var cursorLine = beforeCursor.split('\n').length - 1;
+      var cursorCol = (beforeCursor.split('\n').pop() || '').length;
+
+      editor.value = result.join('\n');
+
+      // カーソル位置を復元（行が存在する範囲で）
+      var newLines = editor.value.split('\n');
+      var newPos = 0;
+      for (var i = 0; i < Math.min(cursorLine, newLines.length); i++) {
+        newPos += newLines[i].length + 1;
+      }
+      if (cursorLine < newLines.length) {
+        newPos += Math.min(cursorCol, newLines[cursorLine].length);
+      }
+      editor.selectionStart = editor.selectionEnd = Math.min(newPos, editor.value.length);
+      editor.focus();
+      triggerEvaluate();
     }
 
     function loadTemplate() {
