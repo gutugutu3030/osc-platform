@@ -1,6 +1,11 @@
 plugins { `java-gradle-plugin` }
 
-dependencies { implementation(project(":osc-codegen")) }
+dependencies {
+  implementation(project(":osc-codegen"))
+  testImplementation(kotlin("test"))
+  testImplementation(kotlin("gradle-plugin"))
+  testImplementation(gradleTestKit())
+}
 
 gradlePlugin {
   plugins {

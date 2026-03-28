@@ -18,9 +18,11 @@ import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.runBlocking
 
 /**
- * [OscRuntime.sendBundle] および [OscTimeTag] ユーティリティを検証するテスト。
+ * [OscRuntime.sendBundle] を検証するテスト。
  *
  * sendBundle は複数の OSC メッセージを一つの [OscBundlePacket] として アトミックに送信する。timeTag はデフォルトで IMMEDIATE(=1) 。
+ *
+ * [OscTimeTag] 自体のユーティリティテストは [OscTimeTagTest] を参照。
  */
 class OscRuntimeBundleSendTest {
 
@@ -152,32 +154,6 @@ class OscRuntimeBundleSendTest {
           target = OscTarget("127.0.0.1", 9000),
       )
     }
-  }
-
-  // -------------------------------------------------------------------------
-  // OscTimeTag ユーティリティ
-  // -------------------------------------------------------------------------
-
-  @Test
-  fun oscTimeTagImmediateIsOne() {
-    assertEquals(1L, OscTimeTag.IMMEDIATE)
-  }
-
-  @Test
-  fun oscTimeTagFromEpochMillisProducesHigherBitForSeconds() {
-    // 0ms (Unix epoch) → NTP秒フィールドは 2_208_988_800
-    val tag = OscTimeTag.fromEpochMillis(0L)
-    val seconds = tag ushr 32
-    assertEquals(2_208_988_800L, seconds)
-  }
-
-  @Test
-  fun oscTimeTagFromEpochMillisIncorporatesFractions() {
-    // 500ms → fraction ≈ 0x8000_0000
-    val tag = OscTimeTag.fromEpochMillis(500L)
-    val fraction = tag and 0xFFFF_FFFFL
-    // 500ms / 1000ms * 2^32 ≈ 2_147_483_648 (0x80000000)
-    assertTrue(fraction in 0x7FFF_0000L..0x8001_0000L, "fraction=$fraction")
   }
 
   // -------------------------------------------------------------------------
