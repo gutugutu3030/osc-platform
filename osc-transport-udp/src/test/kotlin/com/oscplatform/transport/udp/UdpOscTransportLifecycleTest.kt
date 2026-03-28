@@ -114,4 +114,19 @@ class UdpOscTransportLifecycleTest {
       transport.stop()
     }
   }
+
+  /** stop() と start() を繰り返しても同一ポートへ再バインドできること。 */
+  @Test
+  fun repeatedRestartAfterStopSucceeds(): Unit = runBlocking {
+    val transport = UdpOscTransport(bindHost = "127.0.0.1", bindPort = 19717)
+    try {
+      repeat(5) {
+        transport.start()
+        transport.stop()
+      }
+      transport.start()
+    } finally {
+      transport.stop()
+    }
+  }
 }

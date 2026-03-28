@@ -24,6 +24,10 @@ val runtime = OscRuntime(schema = schema, transport = transport)
 runtime.start()
 ```
 
+## ライフサイクル
+
+- `stop()` は受信ループ終了まで待機し、呼び出し完了後は同一インスタンスで再度 `start()` を呼び出せます。
+
 ## サーキットブレーカ
 
 連続受信失敗が `25` 回を超えると受信ループを自動停止します。  
