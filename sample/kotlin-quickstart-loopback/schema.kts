@@ -1,3 +1,5 @@
+import com.oscplatform.core.schema.dsl.*
+
 // OscRuntime に渡すスキーマ定義 (Kotlin DSL)
 // KotlinScriptSchemaLoader が "import com.oscplatform.core.schema.dsl.*" を自動で付与するため、
 // ここではそのまま oscSchema { } ブロックだけを記述する。

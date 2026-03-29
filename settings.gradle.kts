@@ -20,4 +20,5 @@ include(
     "osc-cli",
     "osc-codegen",
     "osc-gradle-plugin",
+    "osc-script-definition",
 )
