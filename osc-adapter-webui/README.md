@@ -226,11 +226,12 @@ osc editor --port 8080    # ポートを指定して起動
 ### 基本的な使い方
 
 1. `osc editor` を起動してブラウザで開きます。
-2. 左の **Kotlin DSL Editor** に `oscSchema { ... }` を入力するか、**サンプルを挿入** で雛形を読み込みます。
+2. 左の **Kotlin DSL Editor** に `import com.oscplatform.core.schema.dsl.*` と `oscSchema { ... }` を入力するか、**サンプルを挿入** で import 付きの雛形を読み込みます。
 3. 入力内容は自動評価され、右の **Schema Preview** に message / args / bundle がリアルタイム表示されます。
 4. 補完候補を見たい位置で入力を始めるか `Ctrl+Space` を押すと、コンテキストに応じた候補が表示されます。
 5. 候補は ↑↓ で選択し、Tab で確定します。構文エラーがある場合はプレビュー領域にエラーが表示されます。
 6. インデントが崩れた場合は **フォーマット** ボタンまたは `Ctrl+Shift+F` で整形できます。
+7. 配布用の `schema.kts` が必要な場合は **schema.kts をダウンロード** ボタンを使います。editor 上で import を消していても、ダウンロード時には `import com.oscplatform.core.schema.dsl.*` が先頭へ自動付加されます。
 
 ### Vim モード
 

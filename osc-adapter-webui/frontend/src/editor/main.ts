@@ -2,7 +2,7 @@ import { getRequiredElement } from "../shared/dom";
 import { CodeMirrorEditor } from "./codemirror-editor";
 import { formatEditorText } from "./formatter";
 import { SchemaPreviewController } from "./preview";
-import { COMPLETIONS, EDITOR_TEMPLATE } from "./template";
+import { COMPLETIONS, EDITOR_TEMPLATE, normalizeSchemaDslImport } from "./template";
 
 /**
  * CSS クラスセレクターで必須要素を取得する。
@@ -24,6 +24,7 @@ const preview = getRequiredElement<HTMLElement>("preview");
 const status = getRequiredElement<HTMLElement>("status");
 const formatButton = getRequiredElement<HTMLButtonElement>("format-btn");
 const loadTemplateButton = getRequiredElement<HTMLButtonElement>("load-template-btn");
+const downloadSchemaButton = getRequiredElement<HTMLButtonElement>("download-schema-btn");
 
 const previewController = new SchemaPreviewController(preview, status);
 
@@ -119,6 +120,9 @@ function init(): void {
   loadTemplateButton.addEventListener("click", () => {
     loadTemplate();
   });
+  downloadSchemaButton.addEventListener("click", () => {
+    downloadSchema();
+  });
   preview.addEventListener("click", (event) => {
     const target = event.target;
     if (target instanceof HTMLElement && target.id === "load-template-empty-btn") {
@@ -153,6 +157,26 @@ function loadTemplate(): void {
   previewController.triggerEvaluate(cmEditor.getValue());
 }
 
+/**
+ * 現在の editor 内容を `schema.kts` としてダウンロードする。
+ *
+ * ダウンロード時には DSL import を先頭へ 1 回だけ正規化し、
+ * editor 上で削除されていても配布物には必ず含める。
+ */
+function downloadSchema(): void {
+  const text = normalizeSchemaDslImport(cmEditor.getValue());
+  const blob = new Blob([text], { type: "text/x-kotlin;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = "schema.kts";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
+}
+
 init();
 
 /**
@@ -161,3 +185,4 @@ init();
  * テスト環境でのみ使用する。プロダクションコードからは参照しない。
  */
 export const __testEditor = cmEditor;
+export const __testNormalizeSchemaDslImport = normalizeSchemaDslImport;

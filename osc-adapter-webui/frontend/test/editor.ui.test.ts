@@ -12,6 +12,7 @@ describe("editor main", () => {
         <div style="display:flex;gap:8px;">
           <button class="template-btn" id="format-btn">フォーマット</button>
           <button class="template-btn" id="load-template-btn">サンプルを挿入</button>
+          <button class="template-btn" id="download-schema-btn">schema.kts をダウンロード</button>
         </div>
       </div>
       <div class="editor-wrap">
@@ -46,6 +47,7 @@ describe("editor main", () => {
     const mod = await import("../src/editor/main");
 
     (document.getElementById("load-template-btn") as HTMLButtonElement).click();
+    expect(mod.__testEditor.getValue()).toContain("import com.oscplatform.core.schema.dsl.*");
     expect(mod.__testEditor.getValue()).toContain("oscSchema {");
 
     await vi.advanceTimersByTimeAsync(600);
@@ -103,6 +105,32 @@ describe("editor main", () => {
     checkbox.checked = false;
     checkbox.dispatchEvent(new Event("change"));
     expect(mod.__testEditor.isVimEnabled()).toBe(false);
+  });
+
+  it("ダウンロード時に import を先頭へ補完した schema.kts を出力する", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: async () => ({ success: true, schema: { messages: [], bundles: [] } }),
+    }));
+
+    const createObjectURL = vi.fn().mockReturnValue("blob:test");
+    const revokeObjectURL = vi.fn();
+    vi.stubGlobal("URL", { createObjectURL, revokeObjectURL } as unknown as typeof URL);
+    const clickSpy = vi.spyOn(HTMLAnchorElement.prototype, "click").mockImplementation(() => {});
+
+    const mod = await import("../src/editor/main");
+    mod.__testEditor.setValue('oscSchema {\nmessage("/a") {\nscalar("x", INT)\n}\n}');
+
+    expect(mod.__testNormalizeSchemaDslImport('oscSchema {\nmessage("/a") {\nscalar("x", INT)\n}\n}')).toBe(
+      'import com.oscplatform.core.schema.dsl.*\n\noscSchema {\nmessage("/a") {\nscalar("x", INT)\n}\n}\n',
+    );
+
+    (document.getElementById("download-schema-btn") as HTMLButtonElement).click();
+
+    expect(createObjectURL).toHaveBeenCalledTimes(1);
+    const blob = createObjectURL.mock.calls[0][0] as Blob;
+    expect(blob).toBeInstanceOf(Blob);
+    expect(clickSpy).toHaveBeenCalledTimes(1);
+    expect(revokeObjectURL).toHaveBeenCalledWith("blob:test");
   });
 });
 

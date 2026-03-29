@@ -155,6 +155,10 @@ class SchemaEditorServer(
                   id = "load-template-btn"
                   +"サンプルを挿入"
                 }
+                button(classes = "template-btn") {
+                  id = "download-schema-btn"
+                  +"schema.kts をダウンロード"
+                }
               }
             }
             div(classes = "editor-wrap") {
@@ -163,7 +167,7 @@ class SchemaEditorServer(
                 attributes["spellcheck"] = "false"
                 attributes["autocomplete"] = "off"
                 attributes["placeholder"] =
-                    "oscSchema {\n    message(\"/example/path\") {\n        description(\"メッセージの説明\")\n        scalar(\"value\", INT)\n    }\n}"
+                    "import com.oscplatform.core.schema.dsl.*\n\noscSchema {\n    message(\"/example/path\") {\n        description(\"メッセージの説明\")\n        scalar(\"value\", INT)\n    }\n}"
               }
               div { id = "ac-popup" }
               div { id = "cursor-mirror" }
