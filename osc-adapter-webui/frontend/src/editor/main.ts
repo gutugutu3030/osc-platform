@@ -1,29 +1,15 @@
-import { getRequiredElement } from "../shared/dom";
+import { getRequiredElement, getRequiredElementBySelector } from "../shared/dom";
 import { CodeMirrorEditor } from "./codemirror-editor";
 import { formatEditorText } from "./formatter";
 import { SchemaPreviewController } from "./preview";
-import { COMPLETIONS, EDITOR_TEMPLATE } from "./template";
+import { COMPLETIONS, EDITOR_TEMPLATE, normalizeSchemaDslImport } from "./template";
 
-/**
- * CSS クラスセレクターで必須要素を取得する。
- *
- * @param selector CSS セレクター文字列
- * @return 見つかった要素
- * @throws Error 要素が見つからない場合
- */
-function getRequiredBySelector<T extends Element>(selector: string): T {
-  const element = document.querySelector<Element>(selector);
-  if (element === null) {
-    throw new Error(`Missing required element: ${selector}`);
-  }
-  return element as unknown as T;
-}
-
-const editorWrap = getRequiredBySelector<HTMLElement>(".editor-wrap");
+const editorWrap = getRequiredElementBySelector<HTMLElement>(".editor-wrap");
 const preview = getRequiredElement<HTMLElement>("preview");
 const status = getRequiredElement<HTMLElement>("status");
 const formatButton = getRequiredElement<HTMLButtonElement>("format-btn");
 const loadTemplateButton = getRequiredElement<HTMLButtonElement>("load-template-btn");
+const downloadSchemaButton = getRequiredElement<HTMLButtonElement>("download-schema-btn");
 
 const previewController = new SchemaPreviewController(preview, status);
 
@@ -72,10 +58,7 @@ const cmEditor = new CodeMirrorEditor(cmContainer, COMPLETIONS, (text: string) =
  * @return 作成したチェックボックス要素
  */
 function createVimToggle(): HTMLInputElement {
-  const editorHeader = document.querySelector(".editor-header div[style]");
-  if (editorHeader === null) {
-    throw new Error("Editor header button container not found");
-  }
+  const editorHeader = getRequiredElementBySelector<HTMLElement>(".editor-header div[style]");
 
   // トグルの外枠ラベル
   const label = document.createElement("label");
@@ -119,6 +102,9 @@ function init(): void {
   loadTemplateButton.addEventListener("click", () => {
     loadTemplate();
   });
+  downloadSchemaButton.addEventListener("click", () => {
+    downloadSchema();
+  });
   preview.addEventListener("click", (event) => {
     const target = event.target;
     if (target instanceof HTMLElement && target.id === "load-template-empty-btn") {
@@ -138,19 +124,49 @@ function init(): void {
  */
 function applyFormat(): void {
   const result = formatEditorText(cmEditor.getValue(), cmEditor.getCursorPosition());
-  cmEditor.setValue(result.text);
-  cmEditor.setCursorPosition(result.cursorPosition);
-  cmEditor.focus();
-  previewController.triggerEvaluate(cmEditor.getValue());
+  updateEditorContent(result.text, result.cursorPosition);
 }
 
 /**
  * サンプルテンプレートをエディタに挿入する。
  */
 function loadTemplate(): void {
-  cmEditor.setValue(EDITOR_TEMPLATE);
+  updateEditorContent(EDITOR_TEMPLATE);
+}
+
+/**
+ * エディタ内容を更新し、必要ならカーソル位置を復元して再評価する。
+ *
+ * @param text エディタへ反映するテキスト
+ * @param cursorPosition 復元するカーソル位置
+ */
+function updateEditorContent(text: string, cursorPosition?: number): void {
+  cmEditor.setValue(text);
+  if (cursorPosition !== undefined) {
+    cmEditor.setCursorPosition(cursorPosition);
+  }
   cmEditor.focus();
   previewController.triggerEvaluate(cmEditor.getValue());
+}
+
+/**
+ * 現在の editor 内容を `schema.kts` としてダウンロードする。
+ *
+ * ダウンロード時には DSL import を先頭へ 1 回だけ正規化し、
+ * editor 上で削除されていても配布物には必ず含める。
+ */
+function downloadSchema(): void {
+  const text = normalizeSchemaDslImport(cmEditor.getValue());
+  const blob = new Blob([text], { type: "text/x-kotlin;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const anchor = document.createElement("a");
+
+  anchor.href = url;
+  anchor.download = "schema.kts";
+  document.body.appendChild(anchor);
+  anchor.click();
+  anchor.remove();
+  URL.revokeObjectURL(url);
 }
 
 init();
@@ -161,3 +177,4 @@ init();
  * テスト環境でのみ使用する。プロダクションコードからは参照しない。
  */
 export const __testEditor = cmEditor;
+export const __testNormalizeSchemaDslImport = normalizeSchemaDslImport;

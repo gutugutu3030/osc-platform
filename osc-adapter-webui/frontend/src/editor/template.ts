@@ -1,5 +1,7 @@
 import type { CompletionCatalog } from "./types";
 
+export const DSL_IMPORT_LINE = "import com.oscplatform.core.schema.dsl.*";
+
 export const COMPLETIONS: CompletionCatalog = {
   top: [{ label: "oscSchema", insert: "oscSchema {\n    \n}", kind: "function", detail: "スキーマ定義のルート" }],
   schema: [
@@ -40,7 +42,34 @@ export const COMPLETIONS: CompletionCatalog = {
   ],
 };
 
-export const EDITOR_TEMPLATE = `oscSchema {
+/**
+ * schema.kts 向けの DSL import を先頭に正規化する。
+ *
+ * 既存の import 行がどこかに含まれていても重複させず、
+ * ダウンロード用テキストでは先頭へ 1 回だけ配置する。
+ *
+ * @param text エディタの現在内容
+ * @returns import 行を先頭に正規化した schema.kts テキスト
+ */
+export function normalizeSchemaDslImport(text: string): string {
+  const normalizedLines = text.replace(/\r\n/g, "\n").split("\n");
+  const bodyLines = normalizedLines.filter((line) => line.trim() !== DSL_IMPORT_LINE);
+
+  while (bodyLines.length > 0 && bodyLines[0].trim() === "") {
+    bodyLines.shift();
+  }
+
+  const body = bodyLines.join("\n").trimEnd();
+  if (body.length === 0) {
+    return `${DSL_IMPORT_LINE}\n`;
+  }
+
+  return `${DSL_IMPORT_LINE}\n\n${body}\n`;
+}
+
+export const EDITOR_TEMPLATE = `${DSL_IMPORT_LINE}
+
+oscSchema {
     message("/light/color") {
         description("RGB カラーを設定する")
         scalar("r", INT)

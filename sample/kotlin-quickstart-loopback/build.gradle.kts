@@ -22,6 +22,7 @@ repositories { mavenCentral() }
 
 dependencies {
   implementation("com.oscplatform:osc-core:$oscPlatformVersion")
+  implementation("com.oscplatform:osc-script-definition:$oscPlatformVersion")
   implementation("com.oscplatform:osc-transport-udp:$oscPlatformVersion")
   implementation("org.jetbrains.kotlinx:kotlinx-coroutines-core:$coroutinesVersion")
 }

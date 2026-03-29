@@ -94,6 +94,10 @@ class SchemaEditorServerTest {
       val body = conn.inputStream.bufferedReader().readText()
       assertTrue(body.contains("OSC Schema Editor"))
       assertTrue(body.contains("Kotlin DSL"))
+      assertTrue(
+          body.contains("import com.oscplatform.core.schema.dsl.*"),
+          "エディタ placeholder に DSL import が含まれていること",
+      )
     }
   }
 
@@ -108,6 +112,14 @@ class SchemaEditorServerTest {
       val body = conn.inputStream.bufferedReader().readText()
       assertTrue(body.contains("id=\"format-btn\""), "フォーマットボタンの id が含まれていること")
       assertTrue(body.contains("フォーマット"), "フォーマットボタンのラベルが含まれていること")
+      assertTrue(
+          body.contains("id=\"download-schema-btn\""),
+          "ダウンロードボタンの id が含まれていること",
+      )
+      assertTrue(
+          body.contains("schema.kts をダウンロード"),
+          "ダウンロードボタンのラベルが含まれていること",
+      )
     }
   }
 

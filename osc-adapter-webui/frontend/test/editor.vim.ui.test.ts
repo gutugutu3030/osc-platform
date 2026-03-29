@@ -15,6 +15,7 @@ describe("editor vim mode", () => {
         <div style="display:flex;gap:8px;">
           <button class="template-btn" id="format-btn">フォーマット</button>
           <button class="template-btn" id="load-template-btn">サンプルを挿入</button>
+          <button class="template-btn" id="download-schema-btn">schema.kts をダウンロード</button>
         </div>
       </div>
       <div class="editor-wrap">

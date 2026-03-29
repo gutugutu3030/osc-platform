@@ -1,6 +1,9 @@
+import com.oscplatform.core.schema.dsl.*
+
 // OscRuntime に渡すスキーマ定義 (Kotlin DSL)
-// KotlinScriptSchemaLoader が "import com.oscplatform.core.schema.dsl.*" を自動で付与するため、
-// ここではそのまま oscSchema { } ブロックだけを記述する。
+// 1 行目の import は IDE (IntelliJ IDEA / Android Studio) の補完・未解決参照エラー解消のために明示している。
+// 実行時は KotlinScriptSchemaLoader が同 import を自動付与するため、
+// 二重になっても動作に影響はない。
 
 oscSchema {
     message("/light/color") {

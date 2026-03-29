@@ -27,13 +27,9 @@ class KotlinScriptSchemaLoader {
    */
   fun load(path: java.nio.file.Path): OscSchema {
     val source = path.readText()
-    val wrappedScript = buildString {
-      appendLine("import com.oscplatform.core.schema.dsl.*")
-      appendLine(source)
-    }
+    val wrappedScript = source.wrapOscSchemaScript()
 
     val result = engine.eval(wrappedScript)
-    return result as? OscSchema
-        ?: error("Schema script must evaluate to OscSchema. Example: oscSchema { ... }")
+    return result.requireOscSchema()
   }
 }

@@ -60,8 +60,6 @@ import kotlinx.html.script
 import kotlinx.html.span
 import kotlinx.html.title
 import kotlinx.html.unsafe
-import tools.jackson.databind.json.JsonMapper
-import tools.jackson.module.kotlin.KotlinModule
 
 /**
  * Web UI の動作モード。
@@ -135,7 +133,6 @@ class WebUiServer(
 
   private var ktorServer: EmbeddedServer<*, *>? = null
   private val sseClients = CopyOnWriteArrayList<SseClient>()
-  private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
   /** HTTP サーバーを起動し、ランタイムイベントおよび追加イベントの配信を開始する。 */
   fun start() {
@@ -148,13 +145,12 @@ class WebUiServer(
     scope.launch {
       additionalEvents.collect { event ->
         broadcastJson(
-            toJson(
-                mapOf(
+            mapOf(
                     "type" to event.type,
                     "message" to event.message,
                     "details" to event.details,
-                ),
-            ),
+                )
+                .toWebUiJson(),
         )
       }
     }
@@ -193,8 +189,8 @@ class WebUiServer(
   private suspend fun serveHtml(call: RoutingCall) {
     val title = pageTitle()
     val subtitle = pageSubtitle()
-    val schemaJson = toJsonForHtmlScript(buildSchemaPayload())
-    val uiConfigJson = toJsonForHtmlScript(buildUiConfigPayload())
+    val schemaJson = buildSchemaPayload().toWebUiHtmlSafeJson()
+    val uiConfigJson = buildUiConfigPayload().toWebUiHtmlSafeJson()
 
     call.respondHtml {
       lang = "en"
@@ -293,7 +289,7 @@ class WebUiServer(
    */
   private suspend fun serveSchema(call: RoutingCall) {
     call.respondText(
-        toJson(buildSchemaPayload()),
+        buildSchemaPayload().toWebUiJson(),
         ContentType.Application.Json,
         HttpStatusCode.OK,
     )
@@ -427,7 +423,7 @@ class WebUiServer(
   private suspend fun handleSend(call: RoutingCall) {
     if (!sendingEnabled()) {
       call.respondText(
-          toJson(mapOf("success" to false, "error" to "send is disabled in monitor mode")),
+          mapOf("success" to false, "error" to "send is disabled in monitor mode").toWebUiJson(),
           ContentType.Application.Json,
           HttpStatusCode.Forbidden,
       )
@@ -437,10 +433,10 @@ class WebUiServer(
     val body = call.receiveText()
     val req =
         try {
-          mapper.readValue(body, Map::class.java)
+          body.parseWebUiJsonObject()
         } catch (e: Exception) {
           call.respondText(
-              toJson(mapOf("success" to false, "error" to "Invalid JSON: ${e.message}")),
+              mapOf("success" to false, "error" to "Invalid JSON: ${e.message}").toWebUiJson(),
               ContentType.Application.Json,
               HttpStatusCode.BadRequest,
           )
@@ -452,7 +448,7 @@ class WebUiServer(
 
     if (messageRef == null || host == null || port == null) {
       call.respondText(
-          toJson(mapOf("error" to "messageRef, host, and port are required")),
+          mapOf("error" to "messageRef, host, and port are required").toWebUiJson(),
           ContentType.Application.Json,
           HttpStatusCode.BadRequest,
       )
@@ -469,13 +465,13 @@ class WebUiServer(
           target = OscTarget(host = host, port = port),
       )
       call.respondText(
-          toJson(mapOf("success" to true)),
+          mapOf("success" to true).toWebUiJson(),
           ContentType.Application.Json,
           HttpStatusCode.OK,
       )
     } catch (e: Exception) {
       call.respondText(
-          toJson(mapOf("success" to false, "error" to (e.message ?: "Unknown error"))),
+          mapOf("success" to false, "error" to (e.message ?: "Unknown error")).toWebUiJson(),
           ContentType.Application.Json,
           HttpStatusCode.BadRequest,
       )
@@ -492,7 +488,7 @@ class WebUiServer(
   private suspend fun handleEvents(call: RoutingCall) {
     val client = SseClient()
     sseClients.add(client)
-    client.send("data: ${toJson(mapOf("type" to "connected"))}\n\n")
+    client.send("data: ${mapOf("type" to "connected").toWebUiJson()}\n\n")
 
     call.response.header(HttpHeaders.CacheControl, "no-cache")
     call.response.header(HttpHeaders.Connection, "keep-alive")
@@ -547,85 +543,59 @@ class WebUiServer(
   private fun serializeRuntimeEvent(event: OscRuntimeEvent): String {
     return when (event) {
       is OscRuntimeEvent.Received ->
-          toJson(
-              mapOf(
+          mapOf(
                   "type" to "received",
                   "path" to event.spec.path,
                   "args" to event.namedArgs,
-              ),
-          )
+              )
+              .toWebUiJson()
 
       is OscRuntimeEvent.ValidationError ->
-          toJson(
-              mapOf(
+          mapOf(
                   "type" to "validation_error",
                   "address" to event.address,
                   "reason" to event.reason,
-              ),
-          )
+              )
+              .toWebUiJson()
 
       is OscRuntimeEvent.TransportErrorEvent ->
-          toJson(
-              mapOf(
+          mapOf(
                   "type" to "transport_error",
                   "message" to event.error.cause.message,
-              ),
-          )
+              )
+              .toWebUiJson()
 
       is OscRuntimeEvent.SendStarted ->
-          toJson(
-              mapOf(
+          mapOf(
                   "type" to "send_started",
                   "messageRef" to event.messageRef,
                   "args" to event.args,
                   "targetHost" to event.target.host,
                   "targetPort" to event.target.port,
-              ),
-          )
+              )
+              .toWebUiJson()
 
       is OscRuntimeEvent.SendSucceeded ->
-          toJson(
-              mapOf(
+          mapOf(
                   "type" to "send_succeeded",
                   "messageRef" to event.messageRef,
                   "args" to event.args,
                   "targetHost" to event.target.host,
                   "targetPort" to event.target.port,
-              ),
-          )
+              )
+              .toWebUiJson()
 
       is OscRuntimeEvent.SendFailed ->
-          toJson(
-              mapOf(
+          mapOf(
                   "type" to "send_failed",
                   "messageRef" to event.messageRef,
                   "error" to event.cause.message,
                   "args" to event.args,
                   "targetHost" to event.target.host,
                   "targetPort" to event.target.port,
-              ),
-          )
+              )
+              .toWebUiJson()
     }
-  }
-
-  /**
-   * オブジェクトを JSON 文字列に変換する。
-   *
-   * @param obj シリアライズ対象のオブジェクト
-   * @return JSON 文字列
-   */
-  private fun toJson(obj: Any?): String {
-    return mapper.writeValueAsString(obj)
-  }
-
-  /**
-   * HTML 内に安全に埋め込める JSON 文字列へ変換する。
-   *
-   * @param obj シリアライズ対象のオブジェクト
-   * @return HTML script タグへ埋め込み可能な JSON 文字列
-   */
-  private fun toJsonForHtmlScript(obj: Any?): String {
-    return toJson(obj).replace("</", "<\\/")
   }
 
   /**

@@ -105,16 +105,23 @@ dependencies {
 IntelliJ IDEA / Android Studio で Gradle プロジェクトを同期 (**Reload Gradle Project**) すると、
 `oscSchema { }` ブロック内のキーワード（`message`、`scalar`、`array` など）が補完候補に表示されます。
 
-#### 方法 2: `.kts` スクリプトファイルでの補完
+#### 方法 2: `schema.kts` を custom script definition で補完
 
-`schema.kts` ファイル内で補完を有効にするには、IntelliJ IDEA の **Kotlin Script** サポートを利用します。
+`schema.kts` ファイル内で安定した補完を有効にするには、`osc-script-definition` を依存に追加します。
+
+```kotlin
+dependencies {
+    implementation("com.oscplatform:osc-script-definition:<version>")
+}
+```
 
 1. プロジェクトルートに `schema.kts` を配置する
-2. IntelliJ IDEA でプロジェクトを開き、Gradle 同期を実行する
-3. `schema.kts` を開くと、`kotlin-scripting-jsr223` により DSL の補完が有効になる
+2. `build.gradle.kts` に `osc-script-definition` を追加する
+3. IntelliJ IDEA / Android Studio で Gradle 同期 (**Reload Gradle Project**) を実行する
+4. `schema.kts` を開くと、`oscSchema { }` や `INT` などの DSL 記号が補完対象になる
 
-> **補足**: `.kts` ファイル内の補完精度は Kotlin Script エンジンの制約を受けます。
-> 最も正確な補完が必要な場合は、方法 1 の Gradle 依存を推奨します。
+> **補足**: `SchemaLoader` による `.kts` の実行は引き続き `kotlin-scripting-jsr223` ベースです。
+> `osc-script-definition` は主に IDE の静的解析と補完を補助するためのモジュールです。
 
 ## スキーマローダ
 

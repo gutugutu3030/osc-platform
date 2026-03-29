@@ -7,6 +7,8 @@ import com.oscplatform.core.schema.OscArgNode
 import com.oscplatform.core.schema.OscSchema
 import com.oscplatform.core.schema.ScalarArgNode
 import com.oscplatform.core.schema.ScalarRole
+import com.oscplatform.core.schema.loader.requireOscSchema
+import com.oscplatform.core.schema.loader.wrapOscSchemaScript
 import io.ktor.http.ContentType
 import io.ktor.http.HttpStatusCode
 import io.ktor.server.application.Application
@@ -37,8 +39,6 @@ import kotlinx.html.span
 import kotlinx.html.textArea
 import kotlinx.html.title
 import kotlinx.html.unsafe
-import tools.jackson.databind.json.JsonMapper
-import tools.jackson.module.kotlin.KotlinModule
 
 /**
  * スキーマエディタサーバーの設定。
@@ -65,7 +65,6 @@ class SchemaEditorServer(
     get() = config.httpPort
 
   private var ktorServer: EmbeddedServer<*, *>? = null
-  private val mapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
   /**
    * Kotlin スクリプトエンジンのファクトリ。
@@ -155,6 +154,10 @@ class SchemaEditorServer(
                   id = "load-template-btn"
                   +"サンプルを挿入"
                 }
+                button(classes = "template-btn") {
+                  id = "download-schema-btn"
+                  +"schema.kts をダウンロード"
+                }
               }
             }
             div(classes = "editor-wrap") {
@@ -163,7 +166,7 @@ class SchemaEditorServer(
                 attributes["spellcheck"] = "false"
                 attributes["autocomplete"] = "off"
                 attributes["placeholder"] =
-                    "oscSchema {\n    message(\"/example/path\") {\n        description(\"メッセージの説明\")\n        scalar(\"value\", INT)\n    }\n}"
+                    "import com.oscplatform.core.schema.dsl.*\n\noscSchema {\n    message(\"/example/path\") {\n        description(\"メッセージの説明\")\n        scalar(\"value\", INT)\n    }\n}"
               }
               div { id = "ac-popup" }
               div { id = "cursor-mirror" }
@@ -212,10 +215,10 @@ class SchemaEditorServer(
     // リクエストボディの JSON 解析
     val req =
         try {
-          mapper.readValue(body, Map::class.java)
+          body.parseWebUiJsonObject()
         } catch (e: Exception) {
           call.respondText(
-              toJson(mapOf("success" to false, "error" to "Invalid JSON: ${e.message}")),
+              mapOf("success" to false, "error" to "Invalid JSON: ${e.message}").toWebUiJson(),
               ContentType.Application.Json,
               HttpStatusCode.BadRequest,
           )
@@ -225,7 +228,7 @@ class SchemaEditorServer(
 
     if (dslText.isNullOrBlank()) {
       call.respondText(
-          toJson(mapOf("success" to false, "error" to "dsl field is required")),
+          mapOf("success" to false, "error" to "dsl field is required").toWebUiJson(),
           ContentType.Application.Json,
           HttpStatusCode.BadRequest,
       )
@@ -237,14 +240,14 @@ class SchemaEditorServer(
       val schema = evaluateDsl(dslText)
       val schemaJson = serializeSchema(schema)
       call.respondText(
-          toJson(mapOf("success" to true, "schema" to schemaJson)),
+          mapOf("success" to true, "schema" to schemaJson).toWebUiJson(),
           ContentType.Application.Json,
       )
     } catch (e: Exception) {
       // エラーメッセージからユーザーに有用な情報を抽出
       val errorMessage = extractUserFriendlyError(e)
       call.respondText(
-          toJson(mapOf("success" to false, "error" to errorMessage)),
+          mapOf("success" to false, "error" to errorMessage).toWebUiJson(),
           ContentType.Application.Json,
       )
     }
@@ -258,11 +261,8 @@ class SchemaEditorServer(
    * @throws IllegalStateException 評価結果が [OscSchema] でない場合
    */
   internal fun evaluateDsl(dslText: String): OscSchema {
-    // 1. DSL インポートを自動挿入してスクリプトをラップ
-    val wrappedScript = buildString {
-      appendLine("import com.oscplatform.core.schema.dsl.*")
-      appendLine(dslText)
-    }
+    // 1. DSL インポート付きの評価用スクリプトへ正規化する
+    val wrappedScript = dslText.wrapOscSchemaScript()
     // 2. エラー後のステート汚染を回避するため新しいエンジンを生成
     val engine =
         engineManager.getEngineByExtension("kts")
@@ -270,8 +270,7 @@ class SchemaEditorServer(
                 "Kotlin script engine not found. Ensure kotlin-scripting-jsr223 is on the classpath")
     // 3. スクリプトを評価し、結果が OscSchema であることを検証
     val result = engine.eval(wrappedScript)
-    return result as? OscSchema
-        ?: error("Schema script must evaluate to OscSchema. Example: oscSchema { ... }")
+    return result.requireOscSchema()
   }
 
   /**
@@ -366,12 +365,4 @@ class SchemaEditorServer(
       message
     }
   }
-
-  /**
-   * オブジェクトを JSON 文字列に変換する。
-   *
-   * @param obj シリアライズ対象のオブジェクト
-   * @return JSON 文字列
-   */
-  private fun toJson(obj: Any?): String = mapper.writeValueAsString(obj)
 }
