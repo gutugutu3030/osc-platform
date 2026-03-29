@@ -1,25 +1,10 @@
-import { getRequiredElement } from "../shared/dom";
+import { getRequiredElement, getRequiredElementBySelector } from "../shared/dom";
 import { CodeMirrorEditor } from "./codemirror-editor";
 import { formatEditorText } from "./formatter";
 import { SchemaPreviewController } from "./preview";
 import { COMPLETIONS, EDITOR_TEMPLATE, normalizeSchemaDslImport } from "./template";
 
-/**
- * CSS クラスセレクターで必須要素を取得する。
- *
- * @param selector CSS セレクター文字列
- * @return 見つかった要素
- * @throws Error 要素が見つからない場合
- */
-function getRequiredBySelector<T extends Element>(selector: string): T {
-  const element = document.querySelector<Element>(selector);
-  if (element === null) {
-    throw new Error(`Missing required element: ${selector}`);
-  }
-  return element as unknown as T;
-}
-
-const editorWrap = getRequiredBySelector<HTMLElement>(".editor-wrap");
+const editorWrap = getRequiredElementBySelector<HTMLElement>(".editor-wrap");
 const preview = getRequiredElement<HTMLElement>("preview");
 const status = getRequiredElement<HTMLElement>("status");
 const formatButton = getRequiredElement<HTMLButtonElement>("format-btn");
@@ -73,10 +58,7 @@ const cmEditor = new CodeMirrorEditor(cmContainer, COMPLETIONS, (text: string) =
  * @return 作成したチェックボックス要素
  */
 function createVimToggle(): HTMLInputElement {
-  const editorHeader = document.querySelector(".editor-header div[style]");
-  if (editorHeader === null) {
-    throw new Error("Editor header button container not found");
-  }
+  const editorHeader = getRequiredElementBySelector<HTMLElement>(".editor-header div[style]");
 
   // トグルの外枠ラベル
   const label = document.createElement("label");
@@ -142,17 +124,27 @@ function init(): void {
  */
 function applyFormat(): void {
   const result = formatEditorText(cmEditor.getValue(), cmEditor.getCursorPosition());
-  cmEditor.setValue(result.text);
-  cmEditor.setCursorPosition(result.cursorPosition);
-  cmEditor.focus();
-  previewController.triggerEvaluate(cmEditor.getValue());
+  updateEditorContent(result.text, result.cursorPosition);
 }
 
 /**
  * サンプルテンプレートをエディタに挿入する。
  */
 function loadTemplate(): void {
-  cmEditor.setValue(EDITOR_TEMPLATE);
+  updateEditorContent(EDITOR_TEMPLATE);
+}
+
+/**
+ * エディタ内容を更新し、必要ならカーソル位置を復元して再評価する。
+ *
+ * @param text エディタへ反映するテキスト
+ * @param cursorPosition 復元するカーソル位置
+ */
+function updateEditorContent(text: string, cursorPosition?: number): void {
+  cmEditor.setValue(text);
+  if (cursorPosition !== undefined) {
+    cmEditor.setCursorPosition(cursorPosition);
+  }
   cmEditor.focus();
   previewController.triggerEvaluate(cmEditor.getValue());
 }

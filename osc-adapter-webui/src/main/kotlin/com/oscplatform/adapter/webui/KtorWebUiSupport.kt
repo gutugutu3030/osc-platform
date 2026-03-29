@@ -4,6 +4,10 @@ import io.ktor.server.http.content.staticResources
 import io.ktor.server.routing.Routing
 import java.net.HttpURLConnection
 import java.net.URI
+import tools.jackson.databind.json.JsonMapper
+import tools.jackson.module.kotlin.KotlinModule
+
+private val webUiJsonMapper = JsonMapper.builder().addModule(KotlinModule.Builder().build()).build()
 
 /**
  * Web UI 用の静的アセット配信ルートを登録する。
@@ -48,4 +52,34 @@ internal fun awaitLocalHttpReady(
   }
 
   error("Server on port $port did not become ready within ${maxRetries * intervalMs}ms")
+}
+
+/**
+ * Web UI 向けにオブジェクトを JSON 文字列へ変換する。
+ *
+ * @return JSON 文字列
+ * @receiver シリアライズ対象のオブジェクト
+ */
+internal fun Any?.toWebUiJson(): String {
+  return webUiJsonMapper.writeValueAsString(this)
+}
+
+/**
+ * Web UI のリクエストボディを JSON オブジェクトとして読み取る。
+ *
+ * @return 連想配列として読み取った JSON オブジェクト
+ * @receiver JSON 文字列
+ */
+internal fun String.parseWebUiJsonObject(): Map<*, *> {
+  return webUiJsonMapper.readValue(this, Map::class.java)
+}
+
+/**
+ * HTML script タグへ安全に埋め込める JSON 文字列へ変換する。
+ *
+ * @return HTML 埋め込み向けにエスケープ済みの JSON 文字列
+ * @receiver シリアライズ対象のオブジェクト
+ */
+internal fun Any?.toWebUiHtmlSafeJson(): String {
+  return toWebUiJson().replace("</", "<\\/")
 }
