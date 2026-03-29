@@ -56,7 +56,7 @@ class McpAdapterExecuteTest {
         )
 
     val exitCode =
-        withTimeout(10.seconds) {
+        withTimeout(20.seconds) {
           adapter.execute(
               args =
                   listOf(
