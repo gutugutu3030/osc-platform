@@ -1,22 +1,115 @@
 import { getRequiredElement } from "../shared/dom";
-import { AutocompleteController } from "./autocomplete";
+import { CodeMirrorEditor } from "./codemirror-editor";
 import { formatEditorText } from "./formatter";
 import { SchemaPreviewController } from "./preview";
 import { COMPLETIONS, EDITOR_TEMPLATE } from "./template";
 
-const editor = getRequiredElement<HTMLTextAreaElement>("editor");
+/**
+ * CSS クラスセレクターで必須要素を取得する。
+ *
+ * @param selector CSS セレクター文字列
+ * @return 見つかった要素
+ * @throws Error 要素が見つからない場合
+ */
+function getRequiredBySelector<T extends Element>(selector: string): T {
+  const element = document.querySelector<Element>(selector);
+  if (element === null) {
+    throw new Error(`Missing required element: ${selector}`);
+  }
+  return element as unknown as T;
+}
+
+const editorWrap = getRequiredBySelector<HTMLElement>(".editor-wrap");
 const preview = getRequiredElement<HTMLElement>("preview");
 const status = getRequiredElement<HTMLElement>("status");
-const popup = getRequiredElement<HTMLElement>("ac-popup");
-const cursorMirror = getRequiredElement<HTMLElement>("cursor-mirror");
 const formatButton = getRequiredElement<HTMLButtonElement>("format-btn");
 const loadTemplateButton = getRequiredElement<HTMLButtonElement>("load-template-btn");
 
 const previewController = new SchemaPreviewController(preview, status);
-const autocomplete = new AutocompleteController(editor, popup, cursorMirror, COMPLETIONS, () => {
-  previewController.triggerEvaluate(editor.value);
+
+/**
+ * CodeMirror エディタのコンテナ要素を準備する。
+ *
+ * 既存の `<textarea>` を非表示にし、CodeMirror が描画される
+ * コンテナ `<div>` を挿入する。
+ *
+ * @param wrap エディタラッパー要素
+ * @return CodeMirror を配置するコンテナ要素
+ */
+function prepareEditorContainer(wrap: HTMLElement): HTMLElement {
+  // 既存の textarea と補完用要素を非表示化
+  const textarea = wrap.querySelector<HTMLTextAreaElement>("#editor");
+  if (textarea !== null) {
+    textarea.style.display = "none";
+  }
+  const acPopup = wrap.querySelector<HTMLElement>("#ac-popup");
+  if (acPopup !== null) {
+    acPopup.style.display = "none";
+  }
+  const cursorMirror = wrap.querySelector<HTMLElement>("#cursor-mirror");
+  if (cursorMirror !== null) {
+    cursorMirror.style.display = "none";
+  }
+
+  // CodeMirror 用のコンテナを追加
+  const container = document.createElement("div");
+  container.id = "cm-container";
+  wrap.insertBefore(container, wrap.firstChild);
+  return container;
+}
+
+const cmContainer = prepareEditorContainer(editorWrap);
+const cmEditor = new CodeMirrorEditor(cmContainer, COMPLETIONS, (text: string) => {
+  previewController.triggerEvaluate(text);
 });
 
+/**
+ * Vim モードトグルボタンを作成して UI に追加する。
+ *
+ * エディタヘッダー内のボタン群に Vim トグルを追加する。
+ * localStorage の設定に基づいて初期状態を復元する。
+ *
+ * @return 作成したチェックボックス要素
+ */
+function createVimToggle(): HTMLInputElement {
+  const editorHeader = document.querySelector(".editor-header div[style]");
+  if (editorHeader === null) {
+    throw new Error("Editor header button container not found");
+  }
+
+  // トグルの外枠ラベル
+  const label = document.createElement("label");
+  label.className = "vim-toggle";
+  label.title = "Vim モードの有効/無効を切り替え";
+
+  // チェックボックス
+  const checkbox = document.createElement("input");
+  checkbox.type = "checkbox";
+  checkbox.id = "vim-toggle-checkbox";
+  checkbox.checked = cmEditor.isVimEnabled();
+
+  // ラベルテキスト
+  const labelText = document.createElement("span");
+  labelText.className = "vim-toggle-label";
+  labelText.textContent = "Vim";
+
+  label.appendChild(checkbox);
+  label.appendChild(labelText);
+  editorHeader.appendChild(label);
+
+  // トグル時に Vim モードを切り替え
+  checkbox.addEventListener("change", () => {
+    cmEditor.setVimMode(checkbox.checked);
+  });
+
+  return checkbox;
+}
+
+/**
+ * エディタの初期化処理を実行する。
+ *
+ * プレビュー、ボタンイベント、Vim トグルを設定する。
+ */
 function init(): void {
   previewController.showEmpty();
 
@@ -33,206 +126,38 @@ function init(): void {
     }
   });
 
-  editor.addEventListener("keydown", (event) => {
-    if (autocomplete.handleKeyDown(event)) {
-      return;
-    }
-    if (handleCompletionShortcut(event)) {
-      return;
-    }
-    if (handleFormatShortcut(event)) {
-      return;
-    }
-    if (handleTabIndent(event)) {
-      return;
-    }
-    if (handlePairInsertion(event)) {
-      return;
-    }
-    if (handleCloserSkip(event)) {
-      return;
-    }
-    if (handlePairedBackspace(event)) {
-      return;
-    }
-    handleEnterIndent(event);
-  });
-
-  editor.addEventListener("input", () => {
-    previewController.triggerEvaluate(editor.value);
-    autocomplete.trigger();
-  });
-
-  editor.addEventListener("blur", () => {
-    window.setTimeout(() => autocomplete.hide(), 200);
-  });
+  // Vim トグルボタンの追加
+  createVimToggle();
 }
 
-function handleCompletionShortcut(event: KeyboardEvent): boolean {
-  if ((event.ctrlKey || event.metaKey) && event.key === " ") {
-    event.preventDefault();
-    autocomplete.trigger(true);
-    return true;
-  }
-  return false;
-}
-
-function handleFormatShortcut(event: KeyboardEvent): boolean {
-  if ((event.ctrlKey || event.metaKey) && event.shiftKey && event.key.toLowerCase() === "f") {
-    event.preventDefault();
-    applyFormat();
-    return true;
-  }
-  return false;
-}
-
-function handleTabIndent(event: KeyboardEvent): boolean {
-  if (event.key !== "Tab") {
-    return false;
-  }
-  event.preventDefault();
-  replaceSelection("    ", editor.selectionStart + 4);
-  return true;
-}
-
-function handlePairInsertion(event: KeyboardEvent): boolean {
-  const pairs: Record<string, string> = { "{": "}", "(": ")", "[": "]", '"': '"' };
-  const closer = pairs[event.key];
-  if (closer === undefined || event.ctrlKey || event.metaKey || event.altKey) {
-    return false;
-  }
-
-  const start = editor.selectionStart;
-  const end = editor.selectionEnd;
-  const value = editor.value;
-  if (start !== end) {
-    event.preventDefault();
-    const selected = value.substring(start, end);
-    editor.value = `${value.substring(0, start)}${event.key}${selected}${closer}${value.substring(end)}`;
-    editor.selectionStart = start + 1;
-    editor.selectionEnd = end + 1;
-    previewController.triggerEvaluate(editor.value);
-    return true;
-  }
-
-  if (event.key === '"') {
-    const beforeCursor = value.substring(0, start);
-    const lastLine = beforeCursor.split("\n").pop() ?? "";
-    const lineQuotes = (lastLine.match(/"/g) ?? []).length;
-    if (lineQuotes % 2 === 1) {
-      return false;
-    }
-  }
-
-  event.preventDefault();
-  editor.value = `${value.substring(0, start)}${event.key}${closer}${value.substring(end)}`;
-  editor.selectionStart = start + 1;
-  editor.selectionEnd = start + 1;
-  previewController.triggerEvaluate(editor.value);
-  autocomplete.trigger();
-  return true;
-}
-
-function handleCloserSkip(event: KeyboardEvent): boolean {
-  if (!["}", ")", "]", '"'].includes(event.key) || event.ctrlKey || event.metaKey || event.altKey) {
-    return false;
-  }
-  const start = editor.selectionStart;
-  if (editor.value[start] !== event.key) {
-    return false;
-  }
-  event.preventDefault();
-  editor.selectionStart = start + 1;
-  editor.selectionEnd = start + 1;
-  return true;
-}
-
-function handlePairedBackspace(event: KeyboardEvent): boolean {
-  if (event.key !== "Backspace" || event.ctrlKey || event.metaKey) {
-    return false;
-  }
-  const start = editor.selectionStart;
-  if (start === 0 || start !== editor.selectionEnd) {
-    return false;
-  }
-
-  const before = editor.value[start - 1];
-  const after = editor.value[start];
-  const paired =
-    (before === "{" && after === "}") ||
-    (before === "(" && after === ")") ||
-    (before === "[" && after === "]") ||
-    (before === '"' && after === '"');
-  if (!paired) {
-    return false;
-  }
-
-  event.preventDefault();
-  editor.value = `${editor.value.substring(0, start - 1)}${editor.value.substring(start + 1)}`;
-  editor.selectionStart = start - 1;
-  editor.selectionEnd = start - 1;
-  previewController.triggerEvaluate(editor.value);
-  return true;
-}
-
-function handleEnterIndent(event: KeyboardEvent): boolean {
-  if (event.key !== "Enter") {
-    return false;
-  }
-
-  const start = editor.selectionStart;
-  const value = editor.value;
-  const beforeCursor = value.substring(0, start);
-  const afterCursor = value.substring(start);
-  const currentLine = beforeCursor.split("\n").pop() ?? "";
-  const indent = currentLine.match(/^(\s*)/)?.[1] ?? "";
-  const charBefore = beforeCursor.trimEnd().slice(-1);
-
-  if (charBefore === "{") {
-    event.preventDefault();
-    const nextIndent = `${indent}    `;
-    if (afterCursor.trimStart().startsWith("}")) {
-      const insert = `\n${nextIndent}\n${indent}`;
-      replaceSelection(insert, start + 1 + nextIndent.length);
-      return true;
-    }
-    const insert = `\n${nextIndent}`;
-    replaceSelection(insert, start + insert.length);
-    return true;
-  }
-
-  if (indent !== "") {
-    event.preventDefault();
-    const insert = `\n${indent}`;
-    replaceSelection(insert, start + insert.length);
-    return true;
-  }
-
-  return false;
-}
-
+/**
+ * フォーマットを適用してエディタ内容を整形する。
+ *
+ * 現在のテキストとカーソル位置を取得し、フォーマットした結果で
+ * エディタを更新する。
+ */
 function applyFormat(): void {
-  const result = formatEditorText(editor.value, editor.selectionStart);
-  editor.value = result.text;
-  editor.selectionStart = result.cursorPosition;
-  editor.selectionEnd = result.cursorPosition;
-  editor.focus();
-  previewController.triggerEvaluate(editor.value);
+  const result = formatEditorText(cmEditor.getValue(), cmEditor.getCursorPosition());
+  cmEditor.setValue(result.text);
+  cmEditor.setCursorPosition(result.cursorPosition);
+  cmEditor.focus();
+  previewController.triggerEvaluate(cmEditor.getValue());
 }
 
+/**
+ * サンプルテンプレートをエディタに挿入する。
+ */
 function loadTemplate(): void {
-  editor.value = EDITOR_TEMPLATE;
-  editor.focus();
-  previewController.triggerEvaluate(editor.value);
-}
-
-function replaceSelection(insert: string, nextCursorPosition: number): void {
-  const start = editor.selectionStart;
-  const end = editor.selectionEnd;
-  editor.value = `${editor.value.substring(0, start)}${insert}${editor.value.substring(end)}`;
-  editor.selectionStart = nextCursorPosition;
-  editor.selectionEnd = nextCursorPosition;
-  previewController.triggerEvaluate(editor.value);
+  cmEditor.setValue(EDITOR_TEMPLATE);
+  cmEditor.focus();
+  previewController.triggerEvaluate(cmEditor.getValue());
 }
 
 init();
+
+/**
+ * テストからエディタにアクセスするための公開インスタンス。
+ *
+ * テスト環境でのみ使用する。プロダクションコードからは参照しない。
+ */
+export const __testEditor = cmEditor;

@@ -229,24 +229,66 @@ osc editor --port 8080    # ポートを指定して起動
 2. 左の **Kotlin DSL Editor** に `oscSchema { ... }` を入力するか、**サンプルを挿入** で雛形を読み込みます。
 3. 入力内容は自動評価され、右の **Schema Preview** に message / args / bundle がリアルタイム表示されます。
 4. 補完候補を見たい位置で入力を始めるか `Ctrl+Space` を押すと、コンテキストに応じた候補が表示されます。
-5. 候補は ↑↓ で選択し、Tab または Enter で確定します。構文エラーがある場合はプレビュー領域にエラーが表示されます。
-6. `{` / `(` / `[` / `"` を入力すると対応する閉じ文字が自動挿入されます。
-7. インデントが崩れた場合は **フォーマット** ボタンまたは `Ctrl+Shift+F` で整形できます。
+5. 候補は ↑↓ で選択し、Tab で確定します。構文エラーがある場合はプレビュー領域にエラーが表示されます。
+6. インデントが崩れた場合は **フォーマット** ボタンまたは `Ctrl+Shift+F` で整形できます。
+
+### Vim モード
+
+エディタヘッダーの **Vim** チェックボックスをオンにすると、Vim 風のモーダル入力が有効になります。
+
+- Normal / Insert / Visual / Visual Block モードを切り替えながら編集できます
+- エディタ下部にモード表示のステータスバーが表示されます
+- 設定は `localStorage` に保存されるため、ブラウザを再読み込みしても維持されます
+- `@replit/codemirror-vim` を使用しており、主要な Vim キーバインドをサポートしています
+- Vim モード有効時の `Ctrl+V` はブラウザ貼り付けではなく、nvim と同様に Visual Block 開始として扱います
+
+#### クリップボード連携
+
+Vim モードではシステムクリップボードとの双方向同期が有効です。
+
+- **yank / delete / change → クリップボード**: エディタ内の操作結果が自動的にシステムクリップボードへコピーされます。外部アプリケーションへそのまま貼り付けできます
+- **クリップボード → エディタ**: エディタにフォーカスが戻ると、システムクリップボードの内容が `+` レジスタに自動で読み込まれます。`"+p` で貼り付けできます
+- Insert モード中は通常のブラウザ貼り付け（`Ctrl+V` / `Cmd+V`）も使用できます
+
+> **注意**: クリップボード API の利用にはブラウザの権限許可が必要な場合があります。権限が得られない環境では自動同期は無効になりますが、Insert モードでのブラウザ貼り付けは引き続き利用できます。
+
+#### 主要ショートカット
+
+以下の基本操作は nvim に合わせた挙動で利用できます。
+
+| モード | 入力 | 動作 |
+|---|---|---|
+| Normal | `Y` / `yy` | 現在行を yank |
+| Normal | `D` / `d$` | カーソル位置から行末まで削除 |
+| Normal | `C` / `c$` | カーソル位置から行末まで変更して Insert モードへ移行 |
+| Normal | `yw` / `dw` | word motion と組み合わせて yank / delete |
+| Normal | `"+p` | システムクリップボードの内容を貼り付け |
+| Normal | `Ctrl+V` | Visual Block モードへ移行 |
+| Visual Block | `y` / `d` / `c` | 矩形選択に対して yank / delete / change |
+
+#### プリセットキーマッピング
+
+以下のカスタムキーマッピングがあらかじめ設定されています。
+追加・変更は `frontend/src/editor/vim-preset.ts` の `DEFAULT_VIM_PRESETS` 配列を編集してください。
+
+| モード | 入力 | 動作 |
+|---|---|---|
+| Insert | `jk` | Normal モードへ戻る (`<Esc>`) |
 
 ### 機能
 
-- 左ペイン: Kotlin DSL エディタ（`oscSchema { ... }` を直接入力）
+- 左ペイン: CodeMirror 6 ベースの Kotlin DSL エディタ（行番号・シンタックスハイライト付き）
 - 右ペイン: スキーマプレビュー（メッセージ・引数・バンドルをリアルタイム表示）
+- **Vim モード**: ヘッダーのチェックボックスでトグル可能な Vim 風モーダル入力
+  - Normal / Insert / Visual モード対応
+  - エディタ下部にモード表示ステータスバー
+  - `localStorage` で設定を永続化
+  - カスタムキーマッピングプリセット対応（`vim-preset.ts` で定義）
 - 入力時にデバウンスしてバックエンドで DSL を評価
 - コンテキスト対応のコード補完（入力中に候補が自動表示、Ctrl+Space で明示起動）
   - スコープに応じた関数候補（`oscSchema` / `message` / `scalar` / `array` / `tuple` / `bundle` 等）
   - 括弧内では型定数（`INT` / `FLOAT` / `STRING` / `BOOL` / `BLOB`）・ロール（`LENGTH` / `VALUE`）・名前付きパラメータを候補表示
-  - ↑↓ で選択、Tab/Enter で確定、Esc で閉じる
-- **括弧ペア補完**: `{` / `(` / `[` / `"` を入力すると対応する閉じ文字が自動挿入され、カーソルがペアの内側に配置される
-  - 閉じ文字がカーソル直後にある場合はスキップ（二重入力を防止）
-  - 空ペア（`{}`, `()`, `[]`, `""`）を Backspace で一括削除
-  - テキスト選択中に括弧キーを押すと選択範囲を囲む
-- **自動インデント**: Enter キーで改行時に前の行のインデントを維持し、`{` 直後は一段深くする
+- **括弧マッチング**: 対応する括弧のハイライト表示（CodeMirror 標準機能）
 - **コードフォーマット**: ブレースのネストに基づいてインデントを自動整形する
   - **フォーマット** ボタンまたは `Ctrl+Shift+F`（macOS: `Cmd+Shift+F`）で実行
 - エラー時はエラーメッセージを表示
@@ -258,7 +300,8 @@ osc editor --port 8080    # ポートを指定して起動
 |---|---|
 | HTTP サーバー | Ktor CIO |
 | monitor / sender / mcp UI | kotlinx.html + 外部 CSS / JavaScript（`src/main/resources/assets/webui/*`） |
-| エディタ UI | kotlinx.html + 外部 CSS / JavaScript（`src/main/resources/assets/editor/*`） |
+| エディタ UI | kotlinx.html + CodeMirror 6 + 外部 CSS / JavaScript（`src/main/resources/assets/editor/*`） |
+| Vim モード | `@replit/codemirror-vim` |
 | DSL 評価 | `kotlin-scripting-jsr223` |
 
 ### HTTP API
@@ -322,7 +365,8 @@ osc-adapter-webui
 
 ## 制約
 
-- UI は単一 HTML に埋め込んだ最小構成です
+- UI は kotlinx.html + esbuild で生成した JavaScript を組み込んだ構成です
+- エディタは CodeMirror 6 を使用しています（esbuild でバンドル）
 - 認証やアクセス制御はありません
 - 開発・検証用途を主目的にしています
 - `osc webui` は後方互換のため残していますが、新規利用は `--webui` を使ってください

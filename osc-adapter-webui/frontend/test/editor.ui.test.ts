@@ -1,17 +1,26 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { installCodeMirrorGeometryMocks } from "./codemirror-geometry";
 
 describe("editor main", () => {
   beforeEach(() => {
     vi.resetModules();
     vi.useFakeTimers();
+    installCodeMirrorGeometryMocks();
     document.body.innerHTML = `
-      <button id="format-btn">フォーマット</button>
-      <button id="load-template-btn">サンプルを挿入</button>
+      <div class="editor-header">
+        <span>Kotlin DSL Editor</span>
+        <div style="display:flex;gap:8px;">
+          <button class="template-btn" id="format-btn">フォーマット</button>
+          <button class="template-btn" id="load-template-btn">サンプルを挿入</button>
+        </div>
+      </div>
+      <div class="editor-wrap">
+        <textarea id="editor"></textarea>
+        <div id="ac-popup"></div>
+        <div id="cursor-mirror"></div>
+      </div>
       <span id="status"></span>
-      <textarea id="editor"></textarea>
       <div id="preview"></div>
-      <div id="ac-popup"></div>
-      <div id="cursor-mirror"></div>
     `;
   });
 
@@ -34,10 +43,10 @@ describe("editor main", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await import("../src/editor/main");
+    const mod = await import("../src/editor/main");
 
     (document.getElementById("load-template-btn") as HTMLButtonElement).click();
-    expect((document.getElementById("editor") as HTMLTextAreaElement).value).toContain("oscSchema {");
+    expect(mod.__testEditor.getValue()).toContain("oscSchema {");
 
     await vi.advanceTimersByTimeAsync(600);
     await flushAsyncWork();
@@ -56,21 +65,44 @@ describe("editor main", () => {
     });
     vi.stubGlobal("fetch", fetchMock);
 
-    await import("../src/editor/main");
+    const mod = await import("../src/editor/main");
 
-    const editor = document.getElementById("editor") as HTMLTextAreaElement;
-    editor.value = 'oscSchema {\nmessage("/a") {\nscalar("x", INT)\n}\n}';
-    editor.selectionStart = editor.value.length;
-    editor.selectionEnd = editor.value.length;
+    mod.__testEditor.setValue('oscSchema {\nmessage("/a") {\nscalar("x", INT)\n}\n}');
 
     (document.getElementById("format-btn") as HTMLButtonElement).click();
-    expect(editor.value).toContain('    message("/a") {');
+    expect(mod.__testEditor.getValue()).toContain('    message("/a") {');
 
     await vi.advanceTimersByTimeAsync(600);
     await flushAsyncWork();
 
     expect(document.getElementById("status")?.textContent).toBe("エラー ✗");
     expect(document.getElementById("preview")?.textContent).toContain("syntax error");
+  });
+
+  it("Vim トグルチェックボックスで Vim モードの有効/無効を切り替えられる", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      json: async () => ({ success: true, schema: { messages: [], bundles: [] } }),
+    }));
+
+    const mod = await import("../src/editor/main");
+
+    const checkbox = document.getElementById("vim-toggle-checkbox") as HTMLInputElement;
+    expect(checkbox).not.toBeNull();
+    expect(checkbox.type).toBe("checkbox");
+
+    // 初期状態は無効
+    expect(mod.__testEditor.isVimEnabled()).toBe(false);
+    expect(checkbox.checked).toBe(false);
+
+    // チェックボックスを有効にして Vim モードを有効化
+    checkbox.checked = true;
+    checkbox.dispatchEvent(new Event("change"));
+    expect(mod.__testEditor.isVimEnabled()).toBe(true);
+
+    // チェックボックスを無効にして Vim モードを無効化
+    checkbox.checked = false;
+    checkbox.dispatchEvent(new Event("change"));
+    expect(mod.__testEditor.isVimEnabled()).toBe(false);
   });
 });
 
