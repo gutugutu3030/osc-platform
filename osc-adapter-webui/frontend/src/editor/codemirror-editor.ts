@@ -61,6 +61,12 @@ export class CodeMirrorEditor {
   /** 現在 Vim モードが有効かどうか */
   private vimEnabled: boolean;
 
+  /** OS カラースキーム変更監視用の MediaQueryList */
+  private readonly colorSchemeQuery: MediaQueryList | null;
+
+  /** OS カラースキーム変更時のリスナー */
+  private readonly colorSchemeListener: ((event: MediaQueryListEvent) => void) | null;
+
   /**
    * CodeMirror エディタを初期化し、指定コンテナに配置する。
    *
@@ -139,12 +145,21 @@ export class CodeMirrorEditor {
     setupVimClipboard(this.view);
 
     // OS カラースキーム変更を監視し、テーマを動的に切り替える
-    window.matchMedia?.("(prefers-color-scheme: dark)").addEventListener("change", (event) => {
-      const theme = event.matches ? this.createDarkTheme() : this.createLightTheme();
-      this.view.dispatch({
-        effects: this.themeCompartment.reconfigure(theme),
-      });
-    });
+    const mql = window.matchMedia?.("(prefers-color-scheme: dark)") ?? null;
+    if (mql !== null) {
+      const listener = (event: MediaQueryListEvent): void => {
+        const theme = event.matches ? this.createDarkTheme() : this.createLightTheme();
+        this.view.dispatch({
+          effects: this.themeCompartment.reconfigure(theme),
+        });
+      };
+      mql.addEventListener("change", listener);
+      this.colorSchemeQuery = mql;
+      this.colorSchemeListener = listener;
+    } else {
+      this.colorSchemeQuery = null;
+      this.colorSchemeListener = null;
+    }
   }
 
   /**
@@ -227,6 +242,18 @@ export class CodeMirrorEditor {
    */
   getView(): EditorView {
     return this.view;
+  }
+
+  /**
+   * エディタと関連リソースを破棄する。
+   *
+   * OS カラースキーム変更リスナーを解除し、EditorView を破棄する。
+   */
+  dispose(): void {
+    if (this.colorSchemeQuery !== null && this.colorSchemeListener !== null) {
+      this.colorSchemeQuery.removeEventListener("change", this.colorSchemeListener);
+    }
+    this.view.destroy();
   }
 
   /**
