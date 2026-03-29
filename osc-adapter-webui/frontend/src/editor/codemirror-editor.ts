@@ -32,10 +32,21 @@ import { applyVimPresets } from "./vim-preset";
 const VIM_MODE_STORAGE_KEY = "osc-editor-vim-mode";
 
 /**
+ * OS のカラースキーム設定がダークモードかどうかを判定する。
+ *
+ * `window.matchMedia` が利用できない環境ではダークモードとみなす。
+ *
+ * @return ダークモードなら true
+ */
+function prefersDarkMode(): boolean {
+  return !window.matchMedia?.("(prefers-color-scheme: light)").matches;
+}
+
+/**
  * CodeMirror 6 ベースのエディタラッパー。
  *
  * 既存の `<textarea>` を CodeMirror 6 エディタビューに置き換え、
- * Vim モードの動的切り替え・自動補完・ダークテーマを提供する。
+ * Vim モードの動的切り替え・自動補完・OS 設定連動テーマを提供する。
  */
 export class CodeMirrorEditor {
   /** CodeMirror のエディタビューインスタンス */
@@ -44,11 +55,23 @@ export class CodeMirrorEditor {
   /** Vim モード拡張を動的に切り替えるための Compartment */
   private readonly vimCompartment = new Compartment();
 
+  /** テーマ拡張を動的に切り替えるための Compartment */
+  private readonly themeCompartment = new Compartment();
+
   /** 現在 Vim モードが有効かどうか */
   private vimEnabled: boolean;
 
+  /** OS カラースキーム変更監視用の MediaQueryList */
+  private readonly colorSchemeQuery: MediaQueryList | null;
+
+  /** OS カラースキーム変更時のリスナー */
+  private readonly colorSchemeListener: ((event: MediaQueryListEvent) => void) | null;
+
   /**
    * CodeMirror エディタを初期化し、指定コンテナに配置する。
+   *
+   * OS のカラースキーム設定を検出し、ダーク／ライトテーマを自動で適用する。
+   * `prefers-color-scheme` の変更を監視し、動的にテーマを切り替える。
    *
    * @param container エディタを配置する親 DOM 要素
    * @param completions 自動補完カタログ
@@ -64,6 +87,10 @@ export class CodeMirrorEditor {
 
     // Vim プリセットキーマッピングの適用
     applyVimPresets();
+
+    // OS 設定に応じた初期テーマを選択
+    const isDark = prefersDarkMode();
+    const initialTheme = isDark ? this.createDarkTheme() : this.createLightTheme();
 
     // エディタの拡張機能一覧を構築
     const extensions: Extension[] = [
@@ -103,7 +130,7 @@ export class CodeMirrorEditor {
           onChange(update.state.doc.toString());
         }
       }),
-      this.createDarkTheme(),
+      this.themeCompartment.of(initialTheme),
     ];
 
     this.view = new EditorView({
@@ -116,6 +143,23 @@ export class CodeMirrorEditor {
 
     // Vim レジスタとシステムクリップボードの双方向同期を設定
     setupVimClipboard(this.view);
+
+    // OS カラースキーム変更を監視し、テーマを動的に切り替える
+    const mql = window.matchMedia?.("(prefers-color-scheme: dark)") ?? null;
+    if (mql !== null) {
+      const listener = (event: MediaQueryListEvent): void => {
+        const theme = event.matches ? this.createDarkTheme() : this.createLightTheme();
+        this.view.dispatch({
+          effects: this.themeCompartment.reconfigure(theme),
+        });
+      };
+      mql.addEventListener("change", listener);
+      this.colorSchemeQuery = mql;
+      this.colorSchemeListener = listener;
+    } else {
+      this.colorSchemeQuery = null;
+      this.colorSchemeListener = null;
+    }
   }
 
   /**
@@ -198,6 +242,18 @@ export class CodeMirrorEditor {
    */
   getView(): EditorView {
     return this.view;
+  }
+
+  /**
+   * エディタと関連リソースを破棄する。
+   *
+   * OS カラースキーム変更リスナーを解除し、EditorView を破棄する。
+   */
+  dispose(): void {
+    if (this.colorSchemeQuery !== null && this.colorSchemeListener !== null) {
+      this.colorSchemeQuery.removeEventListener("change", this.colorSchemeListener);
+    }
+    this.view.destroy();
   }
 
   /**
@@ -330,6 +386,96 @@ export class CodeMirrorEditor {
         },
       },
       { dark: true },
+    );
+  }
+
+  /**
+   * ライトテーマの EditorView テーマ拡張を生成する。
+   *
+   * OS のカラースキームがライトモードの場合に使用する。
+   * editor.css のライトテーマ変数に合わせた配色を定義する。
+   *
+   * @return CodeMirror テーマ拡張
+   */
+  private createLightTheme(): Extension {
+    return EditorView.theme(
+      {
+        "&": {
+          backgroundColor: "#f8fafc",
+          color: "#1e293b",
+          fontFamily: "'Courier New', monospace",
+          fontSize: "13px",
+          height: "100%",
+        },
+        ".cm-content": {
+          caretColor: "#2563eb",
+          padding: "14px",
+          lineHeight: "1.6",
+        },
+        "&.cm-focused .cm-cursor": {
+          borderLeftColor: "#2563eb",
+        },
+        "&.cm-focused .cm-selectionBackground, .cm-selectionBackground": {
+          backgroundColor: "#dbeafe",
+        },
+        ".cm-gutters": {
+          backgroundColor: "#f1f5f9",
+          color: "#94a3b8",
+          border: "none",
+          borderRight: "1px solid #cbd5e1",
+        },
+        ".cm-activeLineGutter": {
+          backgroundColor: "#e2e8f0",
+        },
+        ".cm-activeLine": {
+          backgroundColor: "#f1f5f944",
+        },
+        ".cm-matchingBracket": {
+          backgroundColor: "#e2e8f0",
+          outline: "1px solid #2563eb",
+        },
+        // Vim ステータスバー
+        ".cm-vim-panel": {
+          backgroundColor: "#f1f5f9",
+          color: "#64748b",
+          borderTop: "1px solid #cbd5e1",
+          padding: "2px 8px",
+          fontFamily: "'Courier New', monospace",
+          fontSize: "12px",
+        },
+        ".cm-vim-panel input": {
+          backgroundColor: "#ffffff",
+          color: "#1e293b",
+          border: "1px solid #cbd5e1",
+          fontFamily: "'Courier New', monospace",
+          fontSize: "12px",
+        },
+        // 補完ポップアップ
+        ".cm-tooltip-autocomplete": {
+          backgroundColor: "#ffffff",
+          border: "1px solid #3b82f6",
+          borderRadius: "6px",
+          boxShadow: "0 4px 16px rgba(0,0,0,0.12)",
+        },
+        ".cm-tooltip-autocomplete > ul > li": {
+          padding: "5px 10px",
+          fontSize: "12px",
+          color: "#2563eb",
+        },
+        ".cm-tooltip-autocomplete > ul > li[aria-selected]": {
+          backgroundColor: "#2563eb",
+          color: "white",
+        },
+        ".cm-completionLabel": {
+          fontFamily: "'Courier New', monospace",
+        },
+        ".cm-completionDetail": {
+          fontSize: "10px",
+          color: "#94a3b8",
+          marginLeft: "auto",
+        },
+      },
+      { dark: false },
     );
   }
 }
