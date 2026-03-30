@@ -23,6 +23,7 @@ import org.gradle.api.tasks.SourceSetContainer
  *     schema.set(layout.projectDirectory.file("schema.yaml"))
  *     packageName.set("com.example.osc.generated")
  *     language.set("kotlin")           // optional, default = "kotlin"
+ *     sealedInterfaceName.set("OscMessages") // optional
  *     outputDir.set(...)               // optional
  * }
  * ```
@@ -55,6 +56,7 @@ class OscSchemaCodegenPlugin : Plugin<Project> {
           it.schemaFile.set(extension.schema)
           it.packageName.set(extension.packageName)
           it.language.set(extension.language)
+          it.sealedInterfaceName.set(extension.sealedInterfaceName)
           it.outputDirectory.set(extension.outputDir)
           it.workerClasspath.from(collectWorkerClasspath(project))
         }

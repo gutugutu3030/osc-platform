@@ -41,15 +41,18 @@ class KotlinCodeGenerator {
           "$packagePath/${toBundleClassName(spec.name)}.kt" to
               generateBundle(spec, schema, options.packageName)
         }
-    // sealedInterfaceName が指定されている場合のみ sealed interface ファイルを生成し、マップに追加する
-    val sealedFile =
+    // sealed interface が有効な場合だけ、型定義とランタイム helper をまとめて生成する。
+    val sealedFiles =
         options.sealedInterfaceName?.let { name ->
           val classNames = schema.messages.map { toClassName(it.name) }
           mapOf(
               "$packagePath/$name.kt" to
-                  generateSealedInterface(name, classNames, options.packageName))
+                  generateSealedInterface(name, classNames, options.packageName),
+              "$packagePath/${name}RuntimeExtensions.kt" to
+                  generateSealedRuntimeExtensions(name, classNames, options.packageName),
+          )
         } ?: emptyMap()
-    return messageFiles + bundleFiles + sealedFile
+    return messageFiles + bundleFiles + sealedFiles
   }
 
   /**
@@ -237,6 +240,54 @@ class KotlinCodeGenerator {
     messageClassNames.forEach { name -> appendLine(" * - [$name]") }
     appendLine(" */")
     appendLine("sealed interface $interfaceName : OscMessage")
+  }
+
+  /**
+   * sealed interface 向けの受信 helper 拡張関数を生成する。
+   *
+   * 生成される拡張関数は `OscRuntime.on<OscMessages> { ... }` という構文を提供し、 既存の `OscRuntime.on(companion,
+   * handler)` を束ねて複数メッセージの受信登録を簡潔にする。
+   *
+   * @param interfaceName 生成済み sealed interface の名前
+   * @param messageClassNames スキーマ内の全メッセージクラス名リスト
+   * @param packageName 生成コードのパッケージ名
+   * @return Kotlin ソースコード文字列
+   */
+  fun generateSealedRuntimeExtensions(
+      interfaceName: String,
+      messageClassNames: List<String>,
+      packageName: String,
+  ): String = buildString {
+    appendLine("package $packageName")
+    appendLine()
+    appendLine("import com.oscplatform.core.runtime.OscRuntime")
+    appendLine()
+    appendLine("/**")
+    appendLine(" * generated sealed interface を対象に型安全な受信ハンドラを登録する。")
+    appendLine(" *")
+    appendLine(" * `T` に [$interfaceName] を指定するとスキーマ内の全メッセージが登録され、")
+    appendLine(" * 個別メッセージ型を指定するとその型だけを登録する。")
+    appendLine(" *")
+    appendLine(" * @param T 登録対象の generated メッセージ型または sealed interface")
+    appendLine(" * @param handler 受信時に呼び出されるコールバック")
+    appendLine(" */")
+    appendLine("@Suppress(\"UNCHECKED_CAST\")")
+    appendLine(
+        "inline fun <reified T : $interfaceName> OscRuntime.on(noinline handler: suspend (T) -> Unit) {")
+    appendLine("    when (T::class) {")
+    appendLine("        $interfaceName::class -> {")
+    messageClassNames.forEach { className ->
+      appendLine("            on($className) { msg -> handler(msg as T) }")
+    }
+    appendLine("        }")
+    messageClassNames.forEach { className ->
+      appendLine("        $className::class -> on($className) { msg -> handler(msg as T) }")
+    }
+    appendLine("        else ->")
+    appendLine(
+        "            error(\"Unsupported generated OSC message type: ${'$'}{T::class.qualifiedName}\")")
+    appendLine("    }")
+    appendLine("}")
   }
 
   /**

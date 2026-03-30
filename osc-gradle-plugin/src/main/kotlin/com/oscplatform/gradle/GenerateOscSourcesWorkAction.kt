@@ -28,6 +28,7 @@ abstract class GenerateOscSourcesWorkAction : WorkAction<GenerateOscSourcesWorkP
         CodeGenOptions(
             packageName = parameters.packageName.get(),
             language = parameters.language.get(),
+            sealedInterfaceName = parameters.sealedInterfaceName.orNull,
         )
     val files = OscCodegen.generateFromFile(schemaPath, options)
 

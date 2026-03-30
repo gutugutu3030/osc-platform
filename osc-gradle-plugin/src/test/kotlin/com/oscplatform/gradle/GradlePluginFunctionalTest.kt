@@ -78,6 +78,53 @@ class GradlePluginFunctionalTest {
   }
 
   /**
+   * sealed interface 名を指定した場合に helper 拡張ファイルまで生成されることを検証する。
+   *
+   * 正常系: ビルド後に sealed interface 本体と runtime helper の両方が出力されることを確認する。
+   */
+  @Test
+  fun generateTaskProducesSealedRuntimeExtensionFiles() {
+    createTestProject(testDir, SIMPLE_SCHEMA, sealedInterfaceName = "OscMessages")
+
+    GradleRunner.create()
+        .withProjectDir(testDir)
+        .withPluginClasspath()
+        .withArguments("generateOscSources", "--stacktrace")
+        .build()
+
+    val outputDir = testDir.resolve("build/generated/sources/osc/main/kotlin/com/example/gen")
+    assertTrue(outputDir.resolve("TestMsg.kt").exists(), "通常のメッセージクラスが生成されること")
+    assertTrue(outputDir.resolve("OscMessages.kt").exists(), "sealed interface が生成されること")
+    assertTrue(
+        outputDir.resolve("OscMessagesRuntimeExtensions.kt").exists(),
+        "runtime helper が生成されること",
+    )
+  }
+
+  /**
+   * sealed interface 名を未指定の場合に helper 拡張ファイルが生成されないことを検証する。
+   *
+   * 異常系: sealed 導線を有効化していないビルドでは追加 helper が出力されないことを確認する。
+   */
+  @Test
+  fun generateTaskDoesNotProduceSealedRuntimeExtensionFilesByDefault() {
+    createTestProject(testDir, SIMPLE_SCHEMA)
+
+    GradleRunner.create()
+        .withProjectDir(testDir)
+        .withPluginClasspath()
+        .withArguments("generateOscSources", "--stacktrace")
+        .build()
+
+    val outputDir = testDir.resolve("build/generated/sources/osc/main/kotlin/com/example/gen")
+    assertTrue(outputDir.resolve("TestMsg.kt").exists(), "通常のメッセージクラスが生成されること")
+    assertTrue(
+        !outputDir.resolve("OscMessagesRuntimeExtensions.kt").exists(),
+        "sealed 未指定時は runtime helper が生成されないこと",
+    )
+  }
+
+  /**
    * サポートされていない言語を指定した場合にビルドが失敗することを検証する。
    *
    * 異常系: language に "java" を指定し、ビルドが失敗してエラーメッセージに "Unsupported language" が含まれることを確認する。
@@ -150,10 +197,23 @@ class GradlePluginFunctionalTest {
      * @param dir プロジェクトルートとなるディレクトリ
      * @param schemaContent YAML スキーマの内容
      * @param language 生成言語 (デフォルト: "kotlin")
+     * @param sealedInterfaceName 生成する sealed interface 名。未指定時は生成しない
      */
-    private fun createTestProject(dir: File, schemaContent: String, language: String = "kotlin") {
+    private fun createTestProject(
+        dir: File,
+        schemaContent: String,
+        language: String = "kotlin",
+        sealedInterfaceName: String? = null,
+    ) {
       dir.resolve("settings.gradle.kts").writeText("""rootProject.name = "test-project"""")
       dir.resolve("schema.yaml").writeText(schemaContent)
+      val sealedConfig =
+          sealedInterfaceName?.let {
+            """
+        sealedInterfaceName.set("$it")
+        """
+                .trimIndent()
+          } ?: ""
       dir.resolve("build.gradle.kts")
           .writeText(
               """
@@ -164,6 +224,7 @@ class GradlePluginFunctionalTest {
                   schema.set(layout.projectDirectory.file("schema.yaml"))
                   packageName.set("com.example.gen")
                   language.set("$language")
+                  $sealedConfig
               }
               """
                   .trimIndent(),

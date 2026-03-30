@@ -70,6 +70,45 @@ class KotlinCodeGeneratorSealedTest {
     assertContains(content, "* - [SensorValue]")
   }
 
+  /** sealed interface 有効時に受信 helper 拡張ファイルが生成されることを検証する。 */
+  @Test
+  fun generateSealedRuntimeExtensionsFile() {
+    val schema = oscSchema {
+      message("/light/color") {
+        scalar("r", INT)
+        scalar("g", INT)
+        scalar("b", INT)
+      }
+      message("/sensor/value") { scalar("v", FLOAT) }
+    }
+
+    val options = CodeGenOptions("com.example.gen", sealedInterfaceName = "OscMessages")
+    val files = KotlinCodeGenerator().generate(schema, options)
+
+    val extensionsPath = "com/example/gen/OscMessagesRuntimeExtensions.kt"
+    assertTrue(files.containsKey(extensionsPath), "受信 helper ファイル $extensionsPath が存在すること")
+
+    val content = files[extensionsPath]!!
+    assertContains(content, "import com.oscplatform.core.runtime.OscRuntime")
+    assertContains(content, "inline fun <reified T : OscMessages> OscRuntime.on(")
+    assertContains(content, "OscMessages::class ->")
+    assertContains(content, "LightColor::class -> on(LightColor)")
+    assertContains(content, "SensorValue::class -> on(SensorValue)")
+  }
+
+  /** 受信 helper が未対応型に対する明示的な失敗分岐を含むことを検証する。 */
+  @Test
+  fun sealedRuntimeExtensionsIncludeUnsupportedTypeBranch() {
+    val schema = oscSchema { message("/light/color") { scalar("r", INT) } }
+
+    val options = CodeGenOptions("com.example.gen", sealedInterfaceName = "OscMessages")
+    val files = KotlinCodeGenerator().generate(schema, options)
+    val content = files["com/example/gen/OscMessagesRuntimeExtensions.kt"]!!
+
+    assertContains(content, "Unsupported generated OSC message type")
+    assertContains(content, "${'$'}{T::class.qualifiedName}")
+  }
+
   // -------------------------------------------------------------------------
   // 正常系: メッセージクラスが sealed interface を実装する
   // -------------------------------------------------------------------------
@@ -211,6 +250,7 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: 生成ファイル数の検証
   // -------------------------------------------------------------------------
 
+  /** sealed interface 有効時に型定義と受信 helper を含む追加ファイルが生成されることを検証する。 */
   @Test
   fun sealedModeGeneratesCorrectNumberOfFiles() {
     val schema = oscSchema {
@@ -222,11 +262,11 @@ class KotlinCodeGeneratorSealedTest {
     val withoutSealed = KotlinCodeGenerator().generate(schema, CodeGenOptions("pkg"))
     assertEquals(2, withoutSealed.size, "sealed 未指定時は2ファイル")
 
-    // sealed 指定: メッセージ2ファイル + sealed interface 1ファイル
+    // sealed 指定: メッセージ2ファイル + sealed interface 1ファイル + runtime helper 1ファイル
     val withSealed =
         KotlinCodeGenerator()
             .generate(schema, CodeGenOptions("pkg", sealedInterfaceName = "OscMessages"))
-    assertEquals(3, withSealed.size, "sealed 指定時は3ファイル")
+    assertEquals(4, withSealed.size, "sealed 指定時は4ファイル")
   }
 
   // -------------------------------------------------------------------------

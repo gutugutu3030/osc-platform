@@ -100,6 +100,27 @@ class GenerateOscSourcesTaskTest {
   }
 
   /**
+   * 拡張で設定した sealed interface 名がタスクの [GenerateOscSourcesTask.sealedInterfaceName] に配線されることを検証する。
+   *
+   * 正常系: 拡張の sealedInterfaceName を設定し、タスクの sealedInterfaceName が同じ値であることを確認する。
+   */
+  @Test
+  fun taskSealedInterfaceNameIsWiredFromExtension() {
+    val project = ProjectBuilder.builder().build()
+    project.pluginManager.apply("com.oscplatform.schema-codegen")
+
+    val ext = project.extensions.getByType(OscSchemaCodegenExtension::class.java)
+    ext.sealedInterfaceName.set("OscMessages")
+
+    val task = project.tasks.getByName("generateOscSources") as GenerateOscSourcesTask
+    assertEquals(
+        "OscMessages",
+        task.sealedInterfaceName.get(),
+        "タスクの sealedInterfaceName が拡張の sealedInterfaceName と一致すること",
+    )
+  }
+
+  /**
    * 拡張で設定した出力ディレクトリがタスクの [GenerateOscSourcesTask.outputDirectory] に配線されることを検証する。
    *
    * 正常系: 拡張の outputDir を設定し、タスクの outputDirectory が同じディレクトリを指すことを確認する。
@@ -223,6 +244,37 @@ class GenerateOscSourcesTaskTest {
     )
   }
 
+  /**
+   * sealed interface 名を指定した場合に helper 拡張ファイルまで出力されることを検証する。
+   *
+   * 正常系: generateOscSources 実行後に sealed interface 本体と runtime helper の両方が生成されることを確認する。
+   */
+  @Test
+  fun workActionGeneratesSealedRuntimeExtensionsWhenConfigured() {
+    createTestProject(testDir, SIMPLE_SCHEMA, sealedInterfaceName = "OscMessages")
+
+    val result =
+        GradleRunner.create()
+            .withProjectDir(testDir)
+            .withPluginClasspath()
+            .withArguments("generateOscSources", "--stacktrace")
+            .build()
+
+    assertEquals(
+        TaskOutcome.SUCCESS,
+        result.task(":generateOscSources")?.outcome,
+        "sealed interface 指定時の generateOscSources が SUCCESS であること",
+    )
+
+    val outputDir = testDir.resolve("build/generated/sources/osc/main/kotlin/com/example/gen")
+    assertTrue(outputDir.resolve("TestMsg.kt").exists(), "通常のメッセージクラスが生成されること")
+    assertTrue(outputDir.resolve("OscMessages.kt").exists(), "sealed interface が生成されること")
+    assertTrue(
+        outputDir.resolve("OscMessagesRuntimeExtensions.kt").exists(),
+        "runtime helper が生成されること",
+    )
+  }
+
   companion object {
 
     /** テストで使用するシンプルな YAML スキーマ定義。 */
@@ -256,14 +308,23 @@ class GenerateOscSourcesTaskTest {
      * @param dir プロジェクトルートとなるディレクトリ
      * @param schemaContent YAML スキーマの内容
      * @param language 生成言語 (デフォルト: "kotlin")
+     * @param sealedInterfaceName 生成する sealed interface 名。未指定時は生成しない
      */
     private fun createTestProject(
         dir: File,
         schemaContent: String,
         language: String = "kotlin",
+        sealedInterfaceName: String? = null,
     ) {
       dir.resolve("settings.gradle.kts").writeText("""rootProject.name = "test-project"""")
       dir.resolve("schema.yaml").writeText(schemaContent)
+      val sealedConfig =
+          sealedInterfaceName?.let {
+            """
+        sealedInterfaceName.set("$it")
+        """
+                .trimIndent()
+          } ?: ""
       dir.resolve("build.gradle.kts")
           .writeText(
               """
@@ -274,6 +335,7 @@ class GenerateOscSourcesTaskTest {
                         schema.set(layout.projectDirectory.file("schema.yaml"))
                         packageName.set("com.example.gen")
                         language.set("$language")
+                      $sealedConfig
                     }
                     """
                   .trimIndent(),

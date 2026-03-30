@@ -202,6 +202,28 @@ fun handleMessage(msg: OscMessages): String = when (msg) {
 }
 ```
 
+### 受信 helper の自動生成
+
+sealed interface を有効にすると、`OscMessagesRuntimeExtensions.kt` も追加生成されます。
+このファイルには generated package の top-level extension `on` が含まれ、`runtime.on<OscMessages> { ... }` という受信登録を行えます。
+
+```kotlin
+import com.example.osc.generated.OscMessages
+import com.example.osc.generated.on
+
+fun handleMessage(msg: OscMessages): String = when (msg) {
+    is LightColor -> "color: r=${msg.r}, g=${msg.g}, b=${msg.b}"
+    is SensorValue -> "sensor: v=${msg.v}"
+}
+
+runtime.on<OscMessages> { msg ->
+    println(handleMessage(msg))
+}
+```
+
+この helper は既存の `runtime.on(LightColor) { ... }` を内部で束ねる generated extension です。
+そのため `osc-core` の public API を増やさずに、schema ごとの union 受信を簡潔に記述できます。
+
 ### Java 11 互換性
 
 | 項目 | 影響 |
@@ -216,6 +238,7 @@ fun handleMessage(msg: OscMessages): String = when (msg) {
 - `sealedInterfaceName` を指定しない限り、生成コードは従来とまったく同一
 - 指定した場合でも `OscMessage` / `OscMessageCompanion` への互換性は sealed interface の継承で維持される
 - `OscRuntime.on()` / `send()` は `OscMessage` 型を受け付けるため、sealed interface 有効時も無効時も同じように動作する
+- 指定した場合は sealed interface 本体に加えて、`runtime.on<OscMessages> { ... }` 用の generated helper も利用できる
 
 ## プログラムから直接使う
 

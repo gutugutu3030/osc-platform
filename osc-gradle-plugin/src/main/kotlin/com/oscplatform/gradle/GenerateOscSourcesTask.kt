@@ -10,6 +10,7 @@ import org.gradle.api.tasks.CacheableTask
 import org.gradle.api.tasks.Classpath
 import org.gradle.api.tasks.Input
 import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.Optional
 import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.PathSensitive
 import org.gradle.api.tasks.PathSensitivity
@@ -38,6 +39,9 @@ abstract class GenerateOscSourcesTask : DefaultTask() {
   /** 生成言語 (`"kotlin"` または `"java"`)。 */
   @get:Input abstract val language: Property<String>
 
+  /** 生成する sealed interface 名。未指定時は sealed interface を生成しない。 */
+  @get:Input @get:Optional abstract val sealedInterfaceName: Property<String>
+
   /** 生成されたソースの出力ディレクトリ。 */
   @get:OutputDirectory abstract val outputDirectory: DirectoryProperty
 
@@ -60,6 +64,7 @@ abstract class GenerateOscSourcesTask : DefaultTask() {
       params.schemaFile.set(schemaFile)
       params.packageName.set(packageName)
       params.language.set(language)
+      params.sealedInterfaceName.set(sealedInterfaceName)
       params.outputDirectory.set(outputDirectory)
     }
   }

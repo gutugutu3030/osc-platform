@@ -1,0 +1,20 @@
+messages:
+  - path: /light/color
+    name: light.color
+    args:
+      - name: r
+        kind: scalar
+        type: int
+      - name: g
+        kind: scalar
+        type: int
+      - name: b
+        kind: scalar
+        type: int
+
+  - path: /sensor/value
+    name: sensor.value
+    args:
+      - name: v
+        kind: scalar
+        type: float
