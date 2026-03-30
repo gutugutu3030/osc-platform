@@ -299,47 +299,5 @@ class GenerateOscSourcesTaskTest {
 
     /** コード生成の失敗を引き起こす不正なスキーマ。 */
     private const val INVALID_SCHEMA = "{{{{ not valid yaml at all !!!!"
-
-    /**
-     * テスト用 Gradle プロジェクトを指定ディレクトリに構築する。
-     *
-     * settings.gradle.kts、schema.yaml、build.gradle.kts を生成し、 プラグインを適用した最小構成のプロジェクトを作成する。
-     *
-     * @param dir プロジェクトルートとなるディレクトリ
-     * @param schemaContent YAML スキーマの内容
-     * @param language 生成言語 (デフォルト: "kotlin")
-     * @param sealedInterfaceName 生成する sealed interface 名。未指定時は生成しない
-     */
-    private fun createTestProject(
-        dir: File,
-        schemaContent: String,
-        language: String = "kotlin",
-        sealedInterfaceName: String? = null,
-    ) {
-      dir.resolve("settings.gradle.kts").writeText("""rootProject.name = "test-project"""")
-      dir.resolve("schema.yaml").writeText(schemaContent)
-      val sealedConfig =
-          sealedInterfaceName?.let {
-            """
-        sealedInterfaceName.set("$it")
-        """
-                .trimIndent()
-          } ?: ""
-      dir.resolve("build.gradle.kts")
-          .writeText(
-              """
-                    plugins {
-                        id("com.oscplatform.schema-codegen")
-                    }
-                    oscSchemaCodegen {
-                        schema.set(layout.projectDirectory.file("schema.yaml"))
-                        packageName.set("com.example.gen")
-                        language.set("$language")
-                      $sealedConfig
-                    }
-                    """
-                  .trimIndent(),
-          )
-    }
   }
 }
