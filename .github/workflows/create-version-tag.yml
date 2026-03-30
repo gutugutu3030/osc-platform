@@ -1,0 +1,93 @@
+name: Create Version Tag
+
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: "バージョンの上げ幅 (major / minor / patch)"
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+permissions:
+  contents: write
+
+jobs:
+  create-tag:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Resolve next version
+        id: next
+        shell: bash
+        run: |
+          # 最新の vX.Y.Z タグを取得
+          latest_tag=$(git tag --list 'v[0-9]*.[0-9]*.[0-9]*' --sort=-v:refname | head -n 1)
+
+          if [[ -z "$latest_tag" ]]; then
+            # タグが存在しない場合は v0.0.0 を起点にする
+            major=0 minor=0 patch=0
+          else
+            if [[ ! "$latest_tag" =~ ^v([0-9]+)\.([0-9]+)\.([0-9]+)$ ]]; then
+              echo "::error::最新タグが vX.Y.Z 形式ではありません: $latest_tag"
+              exit 1
+            fi
+            major=${BASH_REMATCH[1]}
+            minor=${BASH_REMATCH[2]}
+            patch=${BASH_REMATCH[3]}
+          fi
+
+          echo "Latest tag: ${latest_tag:-"(none)"}"
+
+          # 選択に応じてバージョンを加算
+          case "${{ inputs.bump }}" in
+            major)
+              major=$((major + 1))
+              minor=0
+              patch=0
+              ;;
+            minor)
+              minor=$((minor + 1))
+              patch=0
+              ;;
+            patch)
+              patch=$((patch + 1))
+              ;;
+            *)
+              echo "::error::不明な bump 種別: ${{ inputs.bump }}"
+              exit 1
+              ;;
+          esac
+
+          next_version="v${major}.${minor}.${patch}"
+          echo "Next version: $next_version"
+
+          # 既存タグとの衝突チェック
+          if git rev-parse "refs/tags/${next_version}" >/dev/null 2>&1; then
+            echo "::error::タグ ${next_version} は既に存在します"
+            exit 1
+          fi
+
+          echo "tag=$next_version" >> "$GITHUB_OUTPUT"
+
+      - name: Create and push tag
+        shell: bash
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git tag "${{ steps.next.outputs.tag }}"
+          git push origin "${{ steps.next.outputs.tag }}"
+
+      - name: Summary
+        run: |
+          echo "## 🏷️ タグ作成完了" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **バージョン**: \`${{ steps.next.outputs.tag }}\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- **bump**: \`${{ inputs.bump }}\`" >> "$GITHUB_STEP_SUMMARY"
