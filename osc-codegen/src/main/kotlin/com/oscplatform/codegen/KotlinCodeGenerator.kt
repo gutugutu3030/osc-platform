@@ -41,7 +41,7 @@ class KotlinCodeGenerator {
           "$packagePath/${toBundleClassName(spec.name)}.kt" to
               generateBundle(spec, schema, options.packageName)
         }
-    // sealed interface ファイルの生成
+    // sealedInterfaceName が指定されている場合のみ sealed interface ファイルを生成し、マップに追加する
     val sealedFile =
         options.sealedInterfaceName?.let { name ->
           val classNames = schema.messages.map { toClassName(it.name) }
@@ -105,7 +105,7 @@ class KotlinCodeGenerator {
       appendLine()
 
       // --- class header ---
-      // sealed interface 指定時は sealed interface を実装（OscMessage は sealed 経由で継承される）
+      // sealed interface 指定時は sealed interface 名を使用し、未指定時は OscMessage を直接実装
       val superType = sealedInterfaceName ?: "OscMessage"
       appendLine("data class $className(")
       constructorArgs.forEach { node ->
