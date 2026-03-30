@@ -15,6 +15,8 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -32,13 +34,58 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
+      - name: Resolve release version
+        id: release-version
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          if [[ ! "$GITHUB_REF_NAME" =~ ^v([0-9]+\.[0-9]+\.[0-9]+)$ ]]; then
+            echo "Release tags must match vX.Y.Z: $GITHUB_REF_NAME" >&2
+            exit 1
+          fi
+
+          echo "tag=$GITHUB_REF_NAME" >> "$GITHUB_OUTPUT"
+          echo "version=${BASH_REMATCH[1]}" >> "$GITHUB_OUTPUT"
+
+      - name: Sync release version to main
+        if: startsWith(github.ref, 'refs/tags/')
+        shell: bash
+        run: |
+          git fetch origin main
+
+          main_head=$(git rev-parse origin/main)
+          if [[ "$GITHUB_SHA" != "$main_head" ]]; then
+            echo "Release tags must point at origin/main HEAD." >&2
+            echo "tag commit:  $GITHUB_SHA" >&2
+            echo "main commit: $main_head" >&2
+            exit 1
+          fi
+
+          git checkout -B main origin/main
+
+          sed -i.bak -E "s/^projectVersion=.*/projectVersion=${{ steps.release-version.outputs.version }}/" gradle.properties
+          rm gradle.properties.bak
+
+          ./gradlew syncVersion --no-daemon
+
+          if git diff --quiet -- gradle.properties README.md feature.md sample/kotlin-quickstart-loopback/README.md; then
+            echo "Release version is already synchronized."
+            exit 0
+          fi
+
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add gradle.properties README.md feature.md sample/kotlin-quickstart-loopback/README.md
+          git commit -m "chore: sync release version ${{ steps.release-version.outputs.tag }}"
+          git push origin HEAD:main
+
       - name: Run release validation tests
         run: ./gradlew :osc-adapter-cli:test :osc-adapter-mcp:test :osc-cli:test :osc-transport-udp:test :osc-adapter-webui:check --no-daemon
 
       - name: Verify synced version references
         run: |
-          ./gradlew syncVersionReferences --no-daemon
-          git diff --exit-code -- README.md feature.md sample/kotlin-quickstart-loopback/README.md
+          ./gradlew syncVersion --no-daemon
+          git diff --exit-code -- gradle.properties README.md feature.md sample/kotlin-quickstart-loopback/README.md
 
       - name: Build CLI artifacts
         run: ./gradlew :osc-cli:shadowJar :osc-cli:distZip

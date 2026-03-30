@@ -105,6 +105,12 @@ tasks.register("syncVersionReferences") {
   }
 }
 
+tasks.register("syncVersion") {
+  group = "documentation"
+  description = "Sync version-managed files after projectVersion changes."
+  dependsOn("syncVersionReferences")
+}
+
 spotless {
   kotlin {
     target("**/*.kt")

@@ -49,6 +49,8 @@ java -jar osc-cli/build/libs/osc-cli-<version>.jar doc sample/kotlin-quickstart-
 
 GitHub Release では次の 2 種類の配布物を公開します。
 
+release workflow は `vX.Y.Z` タグを基準に `projectVersion` と version-managed Markdown を同期し、`main` に反映した後で配布物を生成します。タグは `main` の最新コミットに付与してください。
+
 - osc-cli-<version>.jar
   依存込みの fat jar です。`java -jar` でそのまま実行できます。
 - osc-cli-<version>.zip
