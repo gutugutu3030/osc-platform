@@ -156,6 +156,67 @@ data class SetSceneBundle(
 | アンダースコア / ドット / ハイフン 区切り | 各セグメントを PascalCase で連結し、末尾に `Bundle` | `set_scene` → `SetSceneBundle` |
 | ドット区切り | 同上 | `light.setup` → `LightSetupBundle` |
 
+## sealed interface によるメッセージ集約（オプション）
+
+`CodeGenOptions.sealedInterfaceName` を指定すると、スキーマ内の全メッセージクラスを束ねる `sealed interface` が追加生成されます。
+各メッセージクラスは `OscMessage` の代わりにこの sealed interface を実装するようになります（sealed interface 自体が `OscMessage` を継承するため、既存 API との互換性は維持されます）。
+
+### 有効化方法
+
+```kotlin
+val options = CodeGenOptions(
+    packageName = "com.example.osc.generated",
+    sealedInterfaceName = "OscMessages",  // この指定で sealed interface が生成される
+)
+```
+
+未指定（デフォルト `null`）の場合、従来どおりの `OscMessage` 直接実装が生成されます。
+
+### 生成される sealed interface
+
+```kotlin
+sealed interface OscMessages : OscMessage
+```
+
+### 生成されるメッセージクラス（sealed 有効時）
+
+```kotlin
+data class LightColor(
+    val r: Int,
+    val g: Int,
+    val b: Int,
+) : OscMessages {
+    // toNamedArgs(), companion object 等は従来と同一
+}
+```
+
+### 利点: `when` 式の網羅性チェック
+
+Kotlin の `when` 式で全メッセージ種別を網羅的に処理でき、分岐漏れをコンパイル時に検出できます。
+
+```kotlin
+fun handleMessage(msg: OscMessages): String = when (msg) {
+    is LightColor -> "color: r=${msg.r}, g=${msg.g}, b=${msg.b}"
+    is SensorValue -> "sensor: v=${msg.v}"
+    // 新しいメッセージを追加した場合、ここに分岐を追加しないとコンパイルエラーになる
+}
+```
+
+### Java 11 互換性
+
+| 項目 | 影響 |
+|---|---|
+| バイトコード互換 | Kotlin の `sealed interface` は通常の Java interface としてコンパイルされるため、Java 11 のバイトコードで問題なく動作する |
+| `instanceof` チェック | Java 側から `instanceof LightColor` 等で個別メッセージ型を判定可能 |
+| `when` 網羅性チェック | Kotlin コンパイラの機能であり、Java 側では利用不可（if-else チェーンで代替） |
+| 既存 API | sealed interface は `OscMessage` を継承するため、`OscRuntime.on()` / `send()` はそのまま利用可能 |
+
+### 既存ユーザーへの影響
+
+- `sealedInterfaceName` を指定しない限り、生成コードは従来とまったく同一
+- 指定した場合でも `OscMessage` / `OscMessageCompanion` への互換性は sealed interface の継承で維持される
+- `OscRuntime.on()` / `send()` は `OscMessage` 型を受け付けるため、sealed interface 有効時も無効時も同じように動作する
+
 ## プログラムから直接使う
 
 Gradle プラグインを使わずにプログラムから呼び出す場合は `OscCodegen.generateFromFile()` を使います。

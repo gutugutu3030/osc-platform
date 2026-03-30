@@ -33,14 +33,23 @@ class KotlinCodeGenerator {
     val packagePath = options.packageName.replace('.', '/')
     val messageFiles =
         schema.messages.associate { spec ->
-          "$packagePath/${toClassName(spec.name)}.kt" to generateClass(spec, options.packageName)
+          "$packagePath/${toClassName(spec.name)}.kt" to
+              generateClass(spec, options.packageName, options.sealedInterfaceName)
         }
     val bundleFiles =
         schema.bundles.associate { spec ->
           "$packagePath/${toBundleClassName(spec.name)}.kt" to
               generateBundle(spec, schema, options.packageName)
         }
-    return messageFiles + bundleFiles
+    // sealed interface ファイルの生成
+    val sealedFile =
+        options.sealedInterfaceName?.let { name ->
+          val classNames = schema.messages.map { toClassName(it.name) }
+          mapOf(
+              "$packagePath/$name.kt" to
+                  generateSealedInterface(name, classNames, options.packageName))
+        } ?: emptyMap()
+    return messageFiles + bundleFiles + sealedFile
   }
 
   /**
@@ -50,9 +59,14 @@ class KotlinCodeGenerator {
    *
    * @param spec 生成元のメッセージ仕様
    * @param packageName 生成コードのパッケージ名
+   * @param sealedInterfaceName sealed interface の名前。指定時は OscMessage の代わりにこの型を実装する
    * @return Kotlin ソースコード文字列
    */
-  fun generateClass(spec: OscMessageSpec, packageName: String): String {
+  fun generateClass(
+      spec: OscMessageSpec,
+      packageName: String,
+      sealedInterfaceName: String? = null,
+  ): String {
     val className = toClassName(spec.name)
 
     // コンストラクタパラメータ: VALUE スカラーと全配列
@@ -80,7 +94,10 @@ class KotlinCodeGenerator {
     return buildString {
       appendLine("package $packageName")
       appendLine()
-      appendLine("import com.oscplatform.core.runtime.OscMessage")
+      // sealed interface 指定時は OscMessage の import を省略（sealed interface 経由で継承）
+      if (sealedInterfaceName == null) {
+        appendLine("import com.oscplatform.core.runtime.OscMessage")
+      }
       appendLine("import com.oscplatform.core.runtime.OscMessageCompanion")
       appendLine("import com.oscplatform.core.runtime.oscTyped")
       if (hasScalarArrayArgs) appendLine("import com.oscplatform.core.runtime.oscTypedList")
@@ -88,6 +105,8 @@ class KotlinCodeGenerator {
       appendLine()
 
       // --- class header ---
+      // sealed interface 指定時は sealed interface を実装（OscMessage は sealed 経由で継承される）
+      val superType = sealedInterfaceName ?: "OscMessage"
       appendLine("data class $className(")
       constructorArgs.forEach { node ->
         when (node) {
@@ -96,7 +115,7 @@ class KotlinCodeGenerator {
               appendLine("    val ${node.name}: List<${arrayElementTypeName(node)}>,")
         }
       }
-      appendLine(") : OscMessage {")
+      appendLine(") : $superType {")
 
       // --- computed LENGTH properties ---
       lengthScalars.forEach { lengthNode ->
@@ -185,6 +204,39 @@ class KotlinCodeGenerator {
       appendLine("    }")
       appendLine("}")
     }
+  }
+
+  /**
+   * スキーマ内の全メッセージクラスを束ねる sealed interface のソースを生成する。
+   *
+   * 生成される sealed interface は [OscMessage] を継承し、各メッセージ data class がこの sealed interface
+   * を実装することで、Kotlin の `when` 網羅性チェックを活用できる。
+   *
+   * @param interfaceName 生成する sealed interface の名前
+   * @param messageClassNames スキーマ内の全メッセージクラス名リスト（KDoc コメント用）
+   * @param packageName 生成コードのパッケージ名
+   * @return Kotlin ソースコード文字列
+   */
+  fun generateSealedInterface(
+      interfaceName: String,
+      messageClassNames: List<String>,
+      packageName: String,
+  ): String = buildString {
+    appendLine("package $packageName")
+    appendLine()
+    appendLine("import com.oscplatform.core.runtime.OscMessage")
+    appendLine()
+    // KDoc: sealed interface の説明と実装クラス一覧
+    appendLine("/**")
+    appendLine(" * スキーマで定義された全メッセージを表す sealed interface。")
+    appendLine(" *")
+    appendLine(" * [OscMessage] を継承しており、既存の `OscRuntime.on` / `send` API との互換性を保つ。")
+    appendLine(" * Kotlin の `when` 式で網羅性チェックを活用できる。")
+    appendLine(" *")
+    appendLine(" * 実装クラス:")
+    messageClassNames.forEach { name -> appendLine(" * - [$name]") }
+    appendLine(" */")
+    appendLine("sealed interface $interfaceName : OscMessage")
   }
 
   /**
