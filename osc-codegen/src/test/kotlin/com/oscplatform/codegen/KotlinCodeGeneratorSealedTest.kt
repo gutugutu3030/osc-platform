@@ -22,6 +22,7 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: sealed interface ファイルが生成される
   // -------------------------------------------------------------------------
 
+  /** sealed interface 有効時にパッケージ宣言・import・sealed 宣言を含むファイルが生成されることを検証する。 */
   @Test
   fun generateSealedInterfaceFile() {
     val schema = oscSchema {
@@ -50,6 +51,7 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: sealed interface の KDoc に実装クラス一覧が含まれる
   // -------------------------------------------------------------------------
 
+  /** 生成された sealed interface の KDoc に全メッセージクラス名が列挙されることを検証する。 */
   @Test
   fun sealedInterfaceKDocListsImplementingClasses() {
     val schema = oscSchema {
@@ -113,6 +115,10 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: メッセージクラスが sealed interface を実装する
   // -------------------------------------------------------------------------
 
+  /**
+   * sealed interface 有効時にメッセージ data class が sealed interface を実装し、OscMessage の直接 import
+   * が省略されることを検証する。
+   */
   @Test
   fun messageClassImplementsSealedInterface() {
     val schema = oscSchema {
@@ -140,6 +146,7 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: sealed 未指定時は従来どおり OscMessage を直接実装する
   // -------------------------------------------------------------------------
 
+  /** sealed 未指定時にメッセージクラスが従来どおり OscMessage を直接実装し、sealed ファイルが生成されないことを検証する。 */
   @Test
   fun withoutSealedOptionMessageClassImplementsOscMessageDirectly() {
     val schema = oscSchema { message("/light/color") { scalar("r", INT) } }
@@ -162,6 +169,10 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: sealed 指定時でも companion object は OscMessageCompanion を実装する
   // -------------------------------------------------------------------------
 
+  /**
+   * sealed interface 有効時でも companion object が OscMessageCompanion を実装し PATH・NAME・fromNamedArgs
+   * を保持することを検証する。
+   */
   @Test
   fun sealedModePreservesCompanionObject() {
     val schema = oscSchema {
@@ -187,6 +198,7 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: sealed 指定時でも toNamedArgs が正しく生成される
   // -------------------------------------------------------------------------
 
+  /** sealed interface 有効時でも toNamedArgs が全フィールドを正しくマッピングすることを検証する。 */
   @Test
   fun sealedModePreservesToNamedArgs() {
     val schema = oscSchema {
@@ -211,6 +223,7 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: sealed 指定時でもバンドルクラスは通常どおり生成される
   // -------------------------------------------------------------------------
 
+  /** sealed interface 有効時でもバンドルクラスが OscBundle を実装する従来構造で生成されることを検証する。 */
   @Test
   fun sealedModeDoesNotAffectBundleGeneration() {
     val schema = oscSchema {
@@ -273,6 +286,10 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: generateSealedInterface を直接呼び出す
   // -------------------------------------------------------------------------
 
+  /**
+   * [KotlinCodeGenerator.generateSealedInterface] を直接呼び出し、パッケージ宣言・import・sealed 宣言・KDoc
+   * が正しいことを検証する。
+   */
   @Test
   fun generateSealedInterfaceDirectly() {
     val gen = KotlinCodeGenerator()
@@ -295,6 +312,7 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: タプル配列を含むメッセージでも sealed interface を正しく実装する
   // -------------------------------------------------------------------------
 
+  /** タプル配列を含むメッセージが sealed interface を実装し、nested data class や computed LENGTH が維持されることを検証する。 */
   @Test
   fun sealedModeWithTupleArrayMessage() {
     val schema = oscSchema {
@@ -326,6 +344,7 @@ class KotlinCodeGeneratorSealedTest {
   // 正常系: スカラー配列を含むメッセージでも sealed interface を正しく実装する
   // -------------------------------------------------------------------------
 
+  /** スカラー配列を含むメッセージが sealed interface を実装し、oscTypedList の import が維持されることを検証する。 */
   @Test
   fun sealedModeWithScalarArrayMessage() {
     val schema = oscSchema {
