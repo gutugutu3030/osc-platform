@@ -29,6 +29,7 @@ oscSchemaCodegen {
     schema.set(layout.projectDirectory.file("schema.yaml"))   // 必須
     packageName.set("com.example.osc.generated")              // 必須
     language.set("kotlin")                                    // 省略可（デフォルト "kotlin"）
+    sealedInterfaceName.set("OscMessages")                    // 省略可（sealed helper を有効化）
 }
 ```
 
@@ -48,6 +49,7 @@ oscSchemaCodegen {
 | `schema` | `RegularFileProperty` | ✅ | なし | スキーマファイルのパス（`.yaml` / `.kts`） |
 | `packageName` | `Property<String>` | ✅ | なし | 生成クラスのパッケージ名 |
 | `language` | `Property<String>` | | `"kotlin"` | 生成言語（現在 `"kotlin"` のみ対応） |
+| `sealedInterfaceName` | `Property<String>` | | なし | generated sealed interface 名。指定すると `runtime.on<...>` 用 helper も生成 |
 | `outputDir` | `DirectoryProperty` | | `build/generated/sources/osc/main/kotlin` | 生成ファイルの出力先ディレクトリ |
 
 ## 動作の仕組み
@@ -86,6 +88,17 @@ runtime.send(
     msg = LightColor(r = 255, g = 0, b = 128),
     target = OscTarget("127.0.0.1", 9000),
 )
+```
+
+`sealedInterfaceName` を指定すると、generated sealed interface と受信 helper も追加されます。
+
+```kotlin
+import com.example.osc.generated.OscMessages
+import com.example.osc.generated.on
+
+runtime.on<OscMessages> { msg ->
+    println(msg)
+}
 ```
 
 生成クラスの詳細は [`osc-codegen`](../osc-codegen/README.md) を参照してください。

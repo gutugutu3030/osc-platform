@@ -33,14 +33,26 @@ class KotlinCodeGenerator {
     val packagePath = options.packageName.replace('.', '/')
     val messageFiles =
         schema.messages.associate { spec ->
-          "$packagePath/${toClassName(spec.name)}.kt" to generateClass(spec, options.packageName)
+          "$packagePath/${toClassName(spec.name)}.kt" to
+              generateClass(spec, options.packageName, options.sealedInterfaceName)
         }
     val bundleFiles =
         schema.bundles.associate { spec ->
           "$packagePath/${toBundleClassName(spec.name)}.kt" to
               generateBundle(spec, schema, options.packageName)
         }
-    return messageFiles + bundleFiles
+    // sealed interface が有効な場合だけ、型定義とランタイム helper をまとめて生成する。
+    val sealedFiles =
+        options.sealedInterfaceName?.let { name ->
+          val classNames = schema.messages.map { toClassName(it.name) }
+          mapOf(
+              "$packagePath/$name.kt" to
+                  generateSealedInterface(name, classNames, options.packageName),
+              "$packagePath/${name}RuntimeExtensions.kt" to
+                  generateSealedRuntimeExtensions(name, classNames, options.packageName),
+          )
+        } ?: emptyMap()
+    return messageFiles + bundleFiles + sealedFiles
   }
 
   /**
@@ -50,9 +62,14 @@ class KotlinCodeGenerator {
    *
    * @param spec 生成元のメッセージ仕様
    * @param packageName 生成コードのパッケージ名
+   * @param sealedInterfaceName sealed interface の名前。指定時は OscMessage の代わりにこの型を実装する
    * @return Kotlin ソースコード文字列
    */
-  fun generateClass(spec: OscMessageSpec, packageName: String): String {
+  fun generateClass(
+      spec: OscMessageSpec,
+      packageName: String,
+      sealedInterfaceName: String? = null,
+  ): String {
     val className = toClassName(spec.name)
 
     // コンストラクタパラメータ: VALUE スカラーと全配列
@@ -80,7 +97,10 @@ class KotlinCodeGenerator {
     return buildString {
       appendLine("package $packageName")
       appendLine()
-      appendLine("import com.oscplatform.core.runtime.OscMessage")
+      // sealed interface 指定時は OscMessage の import を省略（sealed interface 経由で継承）
+      if (sealedInterfaceName == null) {
+        appendLine("import com.oscplatform.core.runtime.OscMessage")
+      }
       appendLine("import com.oscplatform.core.runtime.OscMessageCompanion")
       appendLine("import com.oscplatform.core.runtime.oscTyped")
       if (hasScalarArrayArgs) appendLine("import com.oscplatform.core.runtime.oscTypedList")
@@ -88,6 +108,8 @@ class KotlinCodeGenerator {
       appendLine()
 
       // --- class header ---
+      // sealed interface 指定時は sealed interface 名を使用し、未指定時は OscMessage を直接実装
+      val superType = sealedInterfaceName ?: "OscMessage"
       appendLine("data class $className(")
       constructorArgs.forEach { node ->
         when (node) {
@@ -96,7 +118,7 @@ class KotlinCodeGenerator {
               appendLine("    val ${node.name}: List<${arrayElementTypeName(node)}>,")
         }
       }
-      appendLine(") : OscMessage {")
+      appendLine(") : $superType {")
 
       // --- computed LENGTH properties ---
       lengthScalars.forEach { lengthNode ->
@@ -185,6 +207,87 @@ class KotlinCodeGenerator {
       appendLine("    }")
       appendLine("}")
     }
+  }
+
+  /**
+   * スキーマ内の全メッセージクラスを束ねる sealed interface のソースを生成する。
+   *
+   * 生成される sealed interface は [OscMessage] を継承し、各メッセージ data class がこの sealed interface
+   * を実装することで、Kotlin の `when` 網羅性チェックを活用できる。
+   *
+   * @param interfaceName 生成する sealed interface の名前
+   * @param messageClassNames スキーマ内の全メッセージクラス名リスト（KDoc コメント用）
+   * @param packageName 生成コードのパッケージ名
+   * @return Kotlin ソースコード文字列
+   */
+  fun generateSealedInterface(
+      interfaceName: String,
+      messageClassNames: List<String>,
+      packageName: String,
+  ): String = buildString {
+    appendLine("package $packageName")
+    appendLine()
+    appendLine("import com.oscplatform.core.runtime.OscMessage")
+    appendLine()
+    // KDoc: sealed interface の説明と実装クラス一覧
+    appendLine("/**")
+    appendLine(" * スキーマで定義された全メッセージを表す sealed interface。")
+    appendLine(" *")
+    appendLine(" * [OscMessage] を継承しており、既存の `OscRuntime.on` / `send` API との互換性を保つ。")
+    appendLine(" * Kotlin の `when` 式で網羅性チェックを活用できる。")
+    appendLine(" *")
+    appendLine(" * 実装クラス:")
+    messageClassNames.forEach { name -> appendLine(" * - [$name]") }
+    appendLine(" */")
+    appendLine("sealed interface $interfaceName : OscMessage")
+  }
+
+  /**
+   * sealed interface 向けの受信 helper 拡張関数を生成する。
+   *
+   * 生成される拡張関数は `OscRuntime.on<OscMessages> { ... }` という構文を提供し、 既存の `OscRuntime.on(companion,
+   * handler)` を束ねて複数メッセージの受信登録を簡潔にする。
+   *
+   * @param interfaceName 生成済み sealed interface の名前
+   * @param messageClassNames スキーマ内の全メッセージクラス名リスト
+   * @param packageName 生成コードのパッケージ名
+   * @return Kotlin ソースコード文字列
+   */
+  fun generateSealedRuntimeExtensions(
+      interfaceName: String,
+      messageClassNames: List<String>,
+      packageName: String,
+  ): String = buildString {
+    appendLine("package $packageName")
+    appendLine()
+    appendLine("import com.oscplatform.core.runtime.OscRuntime")
+    appendLine()
+    appendLine("/**")
+    appendLine(" * generated sealed interface を対象に型安全な受信ハンドラを登録する。")
+    appendLine(" *")
+    appendLine(" * `T` に [$interfaceName] を指定するとスキーマ内の全メッセージが登録され、")
+    appendLine(" * 個別メッセージ型を指定するとその型だけを登録する。")
+    appendLine(" *")
+    appendLine(" * @param T 登録対象の generated メッセージ型または sealed interface")
+    appendLine(" * @param handler 受信時に呼び出されるコールバック")
+    appendLine(" */")
+    appendLine("@Suppress(\"UNCHECKED_CAST\")")
+    appendLine(
+        "inline fun <reified T : $interfaceName> OscRuntime.on(noinline handler: suspend (T) -> Unit) {")
+    appendLine("    when (T::class) {")
+    appendLine("        $interfaceName::class -> {")
+    messageClassNames.forEach { className ->
+      appendLine("            on($className) { msg -> handler(msg as T) }")
+    }
+    appendLine("        }")
+    messageClassNames.forEach { className ->
+      appendLine("        $className::class -> on($className) { msg -> handler(msg as T) }")
+    }
+    appendLine("        else ->")
+    appendLine(
+        "            error(\"Unsupported generated OSC message type: ${'$'}{T::class.qualifiedName}\")")
+    appendLine("    }")
+    appendLine("}")
   }
 
   /**

@@ -15,6 +15,9 @@ abstract class OscSchemaCodegenExtension {
   /** 生成言語。デフォルト `"kotlin"`。 */
   abstract val language: Property<String>
 
+  /** 生成する sealed interface 名。未指定時は sealed interface を生成しない。 */
+  abstract val sealedInterfaceName: Property<String>
+
   /** 出力ディレクトリ。デフォルト `build/generated/sources/osc/main/kotlin`。 */
   abstract val outputDir: DirectoryProperty
 }
